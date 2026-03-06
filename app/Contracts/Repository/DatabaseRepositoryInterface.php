@@ -5,6 +5,12 @@ namespace Pterodactyl\Contracts\Repository;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
+/**
+ * Repository interface for Database model Eloquent queries.
+ *
+ * Provisioning SQL (CREATE/DROP/GRANT) is handled by DatabaseProvisionerInterface.
+ * This repository handles only Eloquent queries against the panel's own database.
+ */
 interface DatabaseRepositoryInterface extends RepositoryInterface
 {
     public const DEFAULT_CONNECTION_NAME = 'dynamic';
@@ -28,34 +34,4 @@ interface DatabaseRepositoryInterface extends RepositoryInterface
      * Return all the databases for a given host with the server relationship loaded.
      */
     public function getDatabasesForHost(int $host, int $count = 25): LengthAwarePaginator;
-
-    /**
-     * Create a new database on a given connection.
-     */
-    public function createDatabase(string $database): bool;
-
-    /**
-     * Create a new database user on a given connection.
-     */
-    public function createUser(string $username, string $remote, string $password, ?int $max_connections): bool;
-
-    /**
-     * Give a specific user access to a given database.
-     */
-    public function assignUserToDatabase(string $database, string $username, string $remote): bool;
-
-    /**
-     * Flush the privileges for a given connection.
-     */
-    public function flush(): bool;
-
-    /**
-     * Drop a given database on a specific connection.
-     */
-    public function dropDatabase(string $database): bool;
-
-    /**
-     * Drop a given user on a specific connection.
-     */
-    public function dropUser(string $username, string $remote): bool;
 }

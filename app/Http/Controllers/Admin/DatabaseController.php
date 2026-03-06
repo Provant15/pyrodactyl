@@ -11,14 +11,12 @@ use Illuminate\View\Factory as ViewFactory;
 use Pterodactyl\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
-
-use PDO;
-use PDOException;
+use Illuminate\Contracts\Encryption\Encrypter;
 use Pterodactyl\Services\Databases\Hosts\HostUpdateService;
 use Pterodactyl\Http\Requests\Admin\DatabaseHostFormRequest;
 use Pterodactyl\Services\Databases\Hosts\HostCreationService;
 use Pterodactyl\Services\Databases\Hosts\HostDeletionService;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Contracts\Repository\DatabaseRepositoryInterface;
 use Pterodactyl\Contracts\Repository\LocationRepositoryInterface;
 use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
@@ -74,7 +72,7 @@ class DatabaseController extends Controller
         try {
             $host = $this->creationService->handle($request->normalize());
         } catch (\Exception $exception) {
-            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException) {
+            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException || $exception instanceof \RuntimeException) {
                 $this->alert->danger(
                     sprintf('There was an error while trying to connect to the host or while executing a query: "%s"', $exception->getMessage())
                 )->flash();
@@ -105,7 +103,7 @@ class DatabaseController extends Controller
         } catch (\Exception $exception) {
             // Catch any SQL related exceptions and display them back to the user, otherwise just
             // throw the exception like normal and move on with it.
-            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException) {
+            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException || $exception instanceof \RuntimeException) {
                 $this->alert->danger(
                     sprintf('There was an error while trying to connect to the host or while executing a query: "%s"', $exception->getMessage())
                 )->flash();
@@ -135,6 +133,10 @@ class DatabaseController extends Controller
     /**
      * Test database connection credentials.
      *
+     * Delegates to the appropriate driver-specific provisioner to verify
+     * connectivity and check that the admin user has sufficient privileges
+     * for database provisioning operations.
+     *
      * @throws \Illuminate\Validation\ValidationException
      */
     public function testConnection(Request $request): JsonResponse
@@ -144,56 +146,39 @@ class DatabaseController extends Controller
             'port' => 'required|integer|min:1|max:65535',
             'username' => 'required|string',
             'password' => 'required|string',
-        ]);
-        Log::error("TestConnection", [
-            "\nhost" => $request->host,
-            "\nport" => $request->port,
-            "\nusername" => $request->username,
-            "\npassword" => $request->password
+            'driver' => 'required|string|in:mysql,pgsql',
         ]);
 
         try {
-            $dsn = "mysql:host={$request->input('host')};port={$request->input('port')};charset=utf8";
-
-            $pdo = new PDO($dsn, $request->input('username'), $request->input('password'), [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_TIMEOUT => 5, // 5 second timeout
+            // Build a temporary host model for the provisioner
+            $host = new DatabaseHost();
+            $host->forceFill([
+                'host' => $request->input('host'),
+                'port' => $request->input('port'),
+                'username' => $request->input('username'),
+                'password' => app(Encrypter::class)->encrypt($request->input('password')),
+                'driver' => $request->input('driver'),
             ]);
 
-            // Test basic query
-            $version = $pdo->query('SELECT VERSION() as version')->fetchColumn();
-
-            // Test GRANT permissions (this is what Pterodactyl needs)
-            $grants = $pdo->query('SHOW GRANTS FOR CURRENT_USER()')->fetchAll(PDO::FETCH_COLUMN);
-
-            $hasGrantOption = false;
-            foreach ($grants as $grant) {
-                if (stripos($grant, 'GRANT OPTION') !== false) {
-                    $hasGrantOption = true;
-                    break;
-                }
-            }
-
-            $message = "Successfully connected to MySQL server (Version: {$version}).";
-            if (!$hasGrantOption) {
-                $message .= " Warning: The user appears to lack GRANT OPTION permission which is required for creating databases and users.";
-            }
+            $factory = app(ProvisionerFactory::class);
+            $provisioner = $factory->forHost($host);
+            $result = $provisioner->testConnection($host);
 
             return response()->json([
-                'success' => true,
-                'message' => $message,
-                'version' => $version,
-                'has_grant_option' => $hasGrantOption
-            ]);
-        } catch (PDOException $e) {
+                'success' => $result['has_required_permissions'],
+                'message' => $result['message'],
+                'version' => $result['version'],
+                'has_required_permissions' => $result['has_required_permissions'],
+            ], $result['has_required_permissions'] ? 200 : 422);
+        } catch (\PDOException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Connection failed: ' . $e->getMessage()
+                'message' => 'Connection failed: ' . $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Error: ' . $e->getMessage(),
             ], 422);
         }
     }
