@@ -89,6 +89,14 @@ interface DatabaseProvisionerInterface
      */
     public function testConnection(DatabaseHost $host): array;
 
+    /**
+     * Whether this engine's DDL statements (CREATE DATABASE, DROP DATABASE) cannot
+     * run inside a transaction block. When true, the calling service must handle
+     * transactional safety differently - the Eloquent model is saved in a
+     * transaction, but provisioning SQL runs outside of it.
+     */
+    public function requiresExternalTransaction(): bool;
+
     // Future: shared database support (see Appendix A of postgres-db-hosts-plan.md)
     // public function grantAccess(Database $database, DatabaseHost $host, string $username, string $password): void;
     // public function revokeAccess(Database $database, DatabaseHost $host, string $username): void;

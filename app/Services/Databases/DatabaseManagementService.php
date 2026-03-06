@@ -101,18 +101,36 @@ class DatabaseManagementService
         $database = null;
 
         try {
-            return $this->connection->transaction(function () use ($data, &$database) {
-                $database = $this->createModel($data);
+            $host = DatabaseHost::findOrFail($data['database_host_id']);
+            $provisioner = $this->provisionerFactory->forHost($host);
 
-                $host = DatabaseHost::findOrFail($data['database_host_id']);
-                $provisioner = $this->provisionerFactory->forHost($host);
+            if ($provisioner->requiresExternalTransaction()) {
+                // For engines like PostgreSQL where DDL cannot run inside a
+                // transaction block: save the model in a transaction, then
+                // run provisioning SQL outside of it.
+                $database = $this->connection->transaction(function () use ($data) {
+                    return $this->createModel($data);
+                });
 
                 $provisioner->createDatabase($database, $host);
                 $provisioner->createUser($database, $host);
                 $provisioner->assignUserToDatabase($database, $host);
+            } else {
+                // For MySQL-compatible engines: wrap everything (model + SQL) in
+                // a single transaction for atomicity. The &$database reference
+                // ensures we can track the model for cleanup even if MySQL's
+                // implicit DDL commit prevents a clean transaction rollback.
+                $database = $this->connection->transaction(function () use ($data, $provisioner, $host, &$database) {
+                    $database = $this->createModel($data);
+                    $provisioner->createDatabase($database, $host);
+                    $provisioner->createUser($database, $host);
+                    $provisioner->assignUserToDatabase($database, $host);
 
-                return $database;
-            });
+                    return $database;
+                });
+            }
+
+            return $database;
         } catch (\Exception $exception) {
             try {
                 if ($database instanceof Database) {
@@ -120,6 +138,7 @@ class DatabaseManagementService
                     $provisioner = $this->provisionerFactory->forHost($host);
                     $provisioner->dropDatabase($database, $host);
                     $provisioner->dropUser($database, $host);
+                    $database->delete();
                 }
             } catch (\Exception $deletionException) {
                 // Swallow cleanup errors; original exception takes priority.

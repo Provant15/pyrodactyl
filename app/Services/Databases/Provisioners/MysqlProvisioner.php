@@ -184,6 +184,16 @@ class MysqlProvisioner implements DatabaseProvisionerInterface
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * MySQL supports DDL inside transactions (with implicit commits).
+     */
+    public function requiresExternalTransaction(): bool
+    {
+        return false;
+    }
+
+    /**
      * Configure the dynamic connection for the given host and execute a SQL statement.
      *
      * @param DatabaseHost $host The remote host to connect to

@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Pterodactyl\Models\DatabaseHost;
 use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Services\Databases\Provisioners\MysqlProvisioner;
+use Pterodactyl\Services\Databases\Provisioners\PostgresProvisioner;
 use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 
 /**
@@ -39,6 +40,19 @@ class ProvisionerFactoryTest extends TestCase
         $provisioner = $factory->forHost($host);
 
         $this->assertInstanceOf(MysqlProvisioner::class, $provisioner);
+    }
+
+    /**
+     * Verify that a host with driver='pgsql' resolves to PostgresProvisioner.
+     */
+    public function testReturnsPostgresProvisionerForPgsqlDriver(): void
+    {
+        $factory = $this->app->make(ProvisionerFactory::class);
+        $host = $this->makeHost(['driver' => 'pgsql']);
+
+        $provisioner = $factory->forHost($host);
+
+        $this->assertInstanceOf(PostgresProvisioner::class, $provisioner);
     }
 
     /**

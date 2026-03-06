@@ -18,7 +18,7 @@ class ProvisionerFactory
     /** @var array<string, class-string<DatabaseProvisionerInterface>> */
     private const DRIVER_MAP = [
         'mysql' => MysqlProvisioner::class,
-        // 'pgsql' => PostgresProvisioner::class,  // Added in Phase 2
+        'pgsql' => PostgresProvisioner::class,
     ];
 
     public function __construct(
