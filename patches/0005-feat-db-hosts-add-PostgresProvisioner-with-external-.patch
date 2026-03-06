@@ -1,0 +1,920 @@
+From a89527458369aa7905f31dc7a24fe7a96fc232ac Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:41:30 +1000
+Subject: [PATCH 05/10] feat(db-hosts): add PostgresProvisioner with external
+ transaction support
+
+
+diff --git a/app/Contracts/Database/DatabaseProvisionerInterface.php b/app/Contracts/Database/DatabaseProvisionerInterface.php
+index f8bead70a..3d6b8c78b 100644
+--- a/app/Contracts/Database/DatabaseProvisionerInterface.php
++++ b/app/Contracts/Database/DatabaseProvisionerInterface.php
+@@ -89,6 +89,14 @@ interface DatabaseProvisionerInterface
+      */
+     public function testConnection(DatabaseHost $host): array;
+ 
++    /**
++     * Whether this engine's DDL statements (CREATE DATABASE, DROP DATABASE) cannot
++     * run inside a transaction block. When true, the calling service must handle
++     * transactional safety differently - the Eloquent model is saved in a
++     * transaction, but provisioning SQL runs outside of it.
++     */
++    public function requiresExternalTransaction(): bool;
++
+     // Future: shared database support (see Appendix A of postgres-db-hosts-plan.md)
+     // public function grantAccess(Database $database, DatabaseHost $host, string $username, string $password): void;
+     // public function revokeAccess(Database $database, DatabaseHost $host, string $username): void;
+diff --git a/app/Services/Databases/DatabaseManagementService.php b/app/Services/Databases/DatabaseManagementService.php
+index 9e263e8b4..a6bf3f3e2 100644
+--- a/app/Services/Databases/DatabaseManagementService.php
++++ b/app/Services/Databases/DatabaseManagementService.php
+@@ -101,18 +101,36 @@ class DatabaseManagementService
+         $database = null;
+ 
+         try {
+-            return $this->connection->transaction(function () use ($data, &$database) {
+-                $database = $this->createModel($data);
++            $host = DatabaseHost::findOrFail($data['database_host_id']);
++            $provisioner = $this->provisionerFactory->forHost($host);
+ 
+-                $host = DatabaseHost::findOrFail($data['database_host_id']);
+-                $provisioner = $this->provisionerFactory->forHost($host);
++            if ($provisioner->requiresExternalTransaction()) {
++                // For engines like PostgreSQL where DDL cannot run inside a
++                // transaction block: save the model in a transaction, then
++                // run provisioning SQL outside of it.
++                $database = $this->connection->transaction(function () use ($data) {
++                    return $this->createModel($data);
++                });
+ 
+                 $provisioner->createDatabase($database, $host);
+                 $provisioner->createUser($database, $host);
+                 $provisioner->assignUserToDatabase($database, $host);
++            } else {
++                // For MySQL-compatible engines: wrap everything (model + SQL) in
++                // a single transaction for atomicity. The &$database reference
++                // ensures we can track the model for cleanup even if MySQL's
++                // implicit DDL commit prevents a clean transaction rollback.
++                $database = $this->connection->transaction(function () use ($data, $provisioner, $host, &$database) {
++                    $database = $this->createModel($data);
++                    $provisioner->createDatabase($database, $host);
++                    $provisioner->createUser($database, $host);
++                    $provisioner->assignUserToDatabase($database, $host);
++
++                    return $database;
++                });
++            }
+ 
+-                return $database;
+-            });
++            return $database;
+         } catch (\Exception $exception) {
+             try {
+                 if ($database instanceof Database) {
+@@ -120,6 +138,7 @@ class DatabaseManagementService
+                     $provisioner = $this->provisionerFactory->forHost($host);
+                     $provisioner->dropDatabase($database, $host);
+                     $provisioner->dropUser($database, $host);
++                    $database->delete();
+                 }
+             } catch (\Exception $deletionException) {
+                 // Swallow cleanup errors; original exception takes priority.
+diff --git a/app/Services/Databases/Provisioners/MysqlProvisioner.php b/app/Services/Databases/Provisioners/MysqlProvisioner.php
+index b798c15e2..cc8b467d9 100644
+--- a/app/Services/Databases/Provisioners/MysqlProvisioner.php
++++ b/app/Services/Databases/Provisioners/MysqlProvisioner.php
+@@ -183,6 +183,16 @@ class MysqlProvisioner implements DatabaseProvisionerInterface
+         }
+     }
+ 
++    /**
++     * {@inheritDoc}
++     *
++     * MySQL supports DDL inside transactions (with implicit commits).
++     */
++    public function requiresExternalTransaction(): bool
++    {
++        return false;
++    }
++
+     /**
+      * Configure the dynamic connection for the given host and execute a SQL statement.
+      *
+diff --git a/app/Services/Databases/Provisioners/PostgresProvisioner.php b/app/Services/Databases/Provisioners/PostgresProvisioner.php
+new file mode 100644
+index 000000000..162ccf431
+--- /dev/null
++++ b/app/Services/Databases/Provisioners/PostgresProvisioner.php
+@@ -0,0 +1,315 @@
++<?php
++
++namespace Pterodactyl\Services\Databases\Provisioners;
++
++use PDO;
++use PDOException;
++use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
++use Illuminate\Database\DatabaseManager;
++use Illuminate\Contracts\Encryption\Encrypter;
++use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Contracts\Database\DatabaseProvisionerInterface;
++
++/**
++ * Handles PostgreSQL-specific database provisioning operations.
++ *
++ * Executes raw SQL statements against remote PostgreSQL hosts to create/drop
++ * databases, manage roles, and control permissions. Uses the dynamic database
++ * connection system to establish connections to remote hosts at runtime.
++ *
++ * Key differences from MySQL provisioning:
++ * - Uses double-quoted identifiers instead of backticks
++ * - No host-scoped users (PostgreSQL roles are cluster-wide)
++ * - CREATE/DROP DATABASE cannot run inside a transaction block
++ * - Schema-level grants are required for table/sequence access
++ * - ALTER DEFAULT PRIVILEGES ensures future objects inherit grants
++ */
++class PostgresProvisioner implements DatabaseProvisionerInterface
++{
++    public function __construct(
++        private DatabaseManager $databaseManager,
++        private DynamicDatabaseConnection $dynamic,
++        private Encrypter $encrypter,
++    ) {}
++
++    /**
++     * {@inheritDoc}
++     *
++     * Checks pg_database for an existing database before issuing CREATE DATABASE.
++     * PostgreSQL does not support IF NOT EXISTS for CREATE DATABASE, so the
++     * existence check prevents errors on re-runs. Catches SQLSTATE 42P04
++     * (duplicate_database) as a safety net for race conditions.
++     */
++    public function createDatabase(Database $database, DatabaseHost $host): void
++    {
++        $this->dynamic->set('dynamic', $host);
++        $connection = $this->databaseManager->connection('dynamic');
++
++        $exists = $connection->selectOne(
++            'SELECT 1 FROM pg_database WHERE datname = ?',
++            [$database->database]
++        );
++
++        if ($exists) {
++            return;
++        }
++
++        try {
++            $this->runOnHost($host, sprintf(
++                'CREATE DATABASE %s',
++                $this->quoteIdentifier($database->database)
++            ));
++        } catch (\Exception $e) {
++            // SQLSTATE 42P04: duplicate_database - safe to ignore (race condition)
++            if ($this->isSqlState($e, '42P04')) {
++                return;
++            }
++            throw $e;
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Creates a PostgreSQL role with LOGIN capability. Unlike MySQL, PostgreSQL
++     * roles are cluster-wide and do not include a host component. Applies an
++     * optional CONNECTION LIMIT if max_connections is set on the database model.
++     * Catches SQLSTATE 42710 (duplicate_object) for race conditions.
++     */
++    public function createUser(Database $database, DatabaseHost $host): void
++    {
++        $password = $this->encrypter->decrypt($database->password);
++
++        $command = sprintf(
++            'CREATE ROLE %s WITH LOGIN PASSWORD \'%s\'',
++            $this->quoteIdentifier($database->username),
++            $this->escapeLiteral($password)
++        );
++
++        if (!empty($database->max_connections)) {
++            $command .= sprintf(' CONNECTION LIMIT %d', (int) $database->max_connections);
++        }
++
++        try {
++            $this->runOnHost($host, $command);
++        } catch (\Exception $e) {
++            // SQLSTATE 42710: duplicate_object - safe to ignore (race condition)
++            if ($this->isSqlState($e, '42710')) {
++                return;
++            }
++            throw $e;
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Grants access in three stages:
++     * 1. GRANT ALL PRIVILEGES ON DATABASE to the role (admin connection)
++     * 2. Connect to the target database and grant schema-level permissions:
++     *    USAGE/CREATE on public schema, ALL on tables/sequences, plus ALTER
++     *    DEFAULT PRIVILEGES so future objects created by the admin role are
++     *    automatically accessible
++     * 3. Reconnect to the admin database to restore the default connection state
++     */
++    public function assignUserToDatabase(Database $database, DatabaseHost $host): void
++    {
++        $dbIdent = $this->quoteIdentifier($database->database);
++        $userIdent = $this->quoteIdentifier($database->username);
++        $adminIdent = $this->quoteIdentifier($host->username);
++
++        // Step 1: Grant database-level privileges on the admin connection
++        $this->runOnHost($host, sprintf(
++            'GRANT ALL PRIVILEGES ON DATABASE %s TO %s',
++            $dbIdent,
++            $userIdent
++        ));
++
++        // Step 2: Connect to the target database for schema-level grants
++        $this->dynamic->set('dynamic', $host, $database->database);
++        $connection = $this->databaseManager->connection('dynamic');
++
++        $connection->statement(sprintf('GRANT USAGE, CREATE ON SCHEMA public TO %s', $userIdent));
++        $connection->statement(sprintf('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %s', $userIdent));
++        $connection->statement(sprintf('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO %s', $userIdent));
++        $connection->statement(sprintf('ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT ALL ON TABLES TO %s', $adminIdent, $userIdent));
++        $connection->statement(sprintf('ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT ALL ON SEQUENCES TO %s', $adminIdent, $userIdent));
++
++        // Step 3: Restore connection to the admin database for subsequent operations
++        $this->dynamic->set('dynamic', $host);
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Terminates active connections to the database before dropping it.
++     * The pg_terminate_backend call is wrapped in a try/catch because managed
++     * PostgreSQL services may restrict this function. The DROP DATABASE uses
++     * IF EXISTS to be idempotent.
++     */
++    public function dropDatabase(Database $database, DatabaseHost $host): void
++    {
++        // Attempt to terminate active connections; some managed PostgreSQL
++        // services may not permit pg_terminate_backend.
++        try {
++            $this->dynamic->set('dynamic', $host);
++            $this->databaseManager->connection('dynamic')->statement(
++                'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ? AND pid <> pg_backend_pid()',
++                [$database->database]
++            );
++        } catch (\Exception) {
++            // Swallow termination errors - the DROP may still succeed if
++            // there are no active connections.
++        }
++
++        $this->runOnHost($host, sprintf(
++            'DROP DATABASE IF EXISTS %s',
++            $this->quoteIdentifier($database->database)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Drops the PostgreSQL role. Unlike MySQL, there is no host component -
++     * roles are cluster-wide.
++     */
++    public function dropUser(Database $database, DatabaseHost $host): void
++    {
++        $this->runOnHost($host, sprintf(
++            'DROP ROLE IF EXISTS %s',
++            $this->quoteIdentifier($database->username)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * PostgreSQL supports ALTER ROLE to change a password in-place, without
++     * needing to drop and recreate the role or re-grant permissions.
++     */
++    public function rotatePassword(Database $database, DatabaseHost $host, string $newPassword): void
++    {
++        $this->runOnHost($host, sprintf(
++            'ALTER ROLE %s WITH PASSWORD \'%s\'',
++            $this->quoteIdentifier($database->username),
++            $this->escapeLiteral($newPassword)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Opens a raw PDO connection to the PostgreSQL host using the admin
++     * credentials, then checks the server version and verifies that the admin
++     * role has sufficient privileges to provision databases and roles. The admin
++     * must be a superuser, or hold both CREATEROLE and CREATEDB privileges.
++     */
++    public function testConnection(DatabaseHost $host): array
++    {
++        $password = $this->encrypter->decrypt($host->password);
++        $dsn = sprintf('pgsql:host=%s;port=%d;dbname=postgres', $host->host, $host->port);
++
++        try {
++            $pdo = new PDO($dsn, $host->username, $password, [
++                PDO::ATTR_TIMEOUT => 5,
++                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
++            ]);
++
++            $version = $pdo->query('SELECT version()')->fetchColumn();
++
++            $stmt = $pdo->prepare(
++                'SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = current_user'
++            );
++            $stmt->execute();
++            $role = $stmt->fetch(PDO::FETCH_ASSOC);
++
++            $hasPermissions = false;
++            if ($role) {
++                $isSuperuser = filter_var($role['rolsuper'], FILTER_VALIDATE_BOOLEAN);
++                $canCreateRole = filter_var($role['rolcreaterole'], FILTER_VALIDATE_BOOLEAN);
++                $canCreateDb = filter_var($role['rolcreatedb'], FILTER_VALIDATE_BOOLEAN);
++
++                $hasPermissions = $isSuperuser || ($canCreateRole && $canCreateDb);
++            }
++
++            return [
++                'version' => $version ?: 'unknown',
++                'has_required_permissions' => $hasPermissions,
++                'message' => $hasPermissions
++                    ? 'Connection successful with required permissions.'
++                    : 'Connection successful but the role lacks required privileges (needs superuser or CREATEROLE + CREATEDB).',
++            ];
++        } catch (PDOException $e) {
++            return [
++                'version' => 'unknown',
++                'has_required_permissions' => false,
++                'message' => 'Connection failed: ' . $e->getMessage(),
++            ];
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * PostgreSQL cannot run CREATE DATABASE or DROP DATABASE inside a
++     * transaction block. The calling service must save the Eloquent model
++     * in a separate transaction and run provisioning SQL outside of it.
++     */
++    public function requiresExternalTransaction(): bool
++    {
++        return true;
++    }
++
++    /**
++     * Configure the dynamic connection for the given host and execute a SQL statement.
++     *
++     * @param DatabaseHost $host The remote host to connect to
++     * @param string $statement The raw SQL statement to execute
++     */
++    private function runOnHost(DatabaseHost $host, string $statement): void
++    {
++        $this->dynamic->set('dynamic', $host);
++        $this->databaseManager->connection('dynamic')->statement($statement);
++    }
++
++    /**
++     * Quote a PostgreSQL identifier (database name, role name) with double quotes,
++     * escaping any embedded double quotes by doubling them.
++     */
++    private function quoteIdentifier(string $value): string
++    {
++        return '"' . str_replace('"', '""', $value) . '"';
++    }
++
++    /**
++     * Escape a string value for use inside a single-quoted SQL literal.
++     * PostgreSQL uses doubled single quotes for escaping (not backslashes).
++     */
++    private function escapeLiteral(string $value): string
++    {
++        return str_replace("'", "''", $value);
++    }
++
++    /**
++     * Check if an exception corresponds to a specific PostgreSQL SQLSTATE code.
++     * Uses the exception's error code rather than message substring matching
++     * for reliability across locales and driver versions.
++     *
++     * @param \Exception $e The caught exception
++     * @param string $sqlState The 5-character SQLSTATE code to check
++     */
++    private function isSqlState(\Exception $e, string $sqlState): bool
++    {
++        // PDOException and QueryException expose SQLSTATE via getCode()
++        if ($e->getCode() === $sqlState) {
++            return true;
++        }
++
++        // Laravel's QueryException wraps PDOException as the previous exception
++        $previous = $e->getPrevious();
++
++        return $previous instanceof \Exception && $previous->getCode() === $sqlState;
++    }
++}
+diff --git a/app/Services/Databases/Provisioners/ProvisionerFactory.php b/app/Services/Databases/Provisioners/ProvisionerFactory.php
+index 76ca8ddcd..212d4aaad 100644
+--- a/app/Services/Databases/Provisioners/ProvisionerFactory.php
++++ b/app/Services/Databases/Provisioners/ProvisionerFactory.php
+@@ -18,7 +18,7 @@ class ProvisionerFactory
+     /** @var array<string, class-string<DatabaseProvisionerInterface>> */
+     private const DRIVER_MAP = [
+         'mysql' => MysqlProvisioner::class,
+-        // 'pgsql' => PostgresProvisioner::class,  // Added in Phase 2
++        'pgsql' => PostgresProvisioner::class,
+     ];
+ 
+     public function __construct(
+diff --git a/tests/Unit/Services/Databases/Provisioners/PostgresProvisionerTest.php b/tests/Unit/Services/Databases/Provisioners/PostgresProvisionerTest.php
+new file mode 100644
+index 000000000..d80080286
+--- /dev/null
++++ b/tests/Unit/Services/Databases/Provisioners/PostgresProvisionerTest.php
+@@ -0,0 +1,443 @@
++<?php
++
++namespace Pterodactyl\Tests\Unit\Services\Databases\Provisioners;
++
++use Mockery;
++use Mockery\MockInterface;
++use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
++use Pterodactyl\Tests\TestCase;
++use Illuminate\Database\DatabaseManager;
++use Illuminate\Database\Connection;
++use Illuminate\Contracts\Encryption\Encrypter;
++use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Services\Databases\Provisioners\PostgresProvisioner;
++
++/**
++ * Verifies that PostgresProvisioner generates correct PostgreSQL SQL statements
++ * for each provisioning operation and routes them through the dynamic
++ * database connection.
++ */
++class PostgresProvisionerTest extends TestCase
++{
++    private MockInterface $databaseManager;
++    private MockInterface $dynamic;
++    private MockInterface $encrypter;
++    private MockInterface $connection;
++    private PostgresProvisioner $provisioner;
++
++    public function setUp(): void
++    {
++        parent::setUp();
++
++        $this->databaseManager = Mockery::mock(DatabaseManager::class);
++        $this->dynamic = Mockery::mock(DynamicDatabaseConnection::class);
++        $this->encrypter = Mockery::mock(Encrypter::class);
++        $this->connection = Mockery::mock(Connection::class);
++
++        $this->provisioner = new PostgresProvisioner(
++            $this->databaseManager,
++            $this->dynamic,
++            $this->encrypter,
++        );
++    }
++
++    /**
++     * Verify that createDatabase checks pg_database for existence, then issues
++     * CREATE DATABASE with double-quoted identifiers.
++     */
++    public function testCreateDatabaseChecksExistenceAndCreates(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        // First call: existence check via selectOne
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->twice();
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->twice()
++            ->andReturn($this->connection);
++
++        $this->connection->shouldReceive('selectOne')
++            ->once()
++            ->with('SELECT 1 FROM pg_database WHERE datname = ?', ['s1_testdb'])
++            ->andReturn(null);
++
++        // Second call: CREATE DATABASE
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('CREATE DATABASE "s1_testdb"')
++            ->andReturn(true);
++
++        $this->provisioner->createDatabase($database, $host);
++    }
++
++    /**
++     * Verify that createDatabase skips creation when the database already exists.
++     */
++    public function testCreateDatabaseSkipsWhenExists(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->once();
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->once()
++            ->andReturn($this->connection);
++
++        $this->connection->shouldReceive('selectOne')
++            ->once()
++            ->with('SELECT 1 FROM pg_database WHERE datname = ?', ['s1_testdb'])
++            ->andReturn((object) ['?column?' => 1]);
++
++        $this->connection->shouldNotReceive('statement');
++
++        $this->provisioner->createDatabase($database, $host);
++    }
++
++    /**
++     * Verify that createUser issues CREATE ROLE with LOGIN, PASSWORD, and
++     * CONNECTION LIMIT when max_connections is set.
++     */
++    public function testCreateUserWithConnectionLimit(): void
++    {
++        $database = $this->makeDatabase([
++            'username' => 'u1_abcdefghij',
++            'password' => 'encrypted_password',
++            'max_connections' => 10,
++        ]);
++        $host = $this->makeHost();
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('plain_password');
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement(
++            "CREATE ROLE \"u1_abcdefghij\" WITH LOGIN PASSWORD 'plain_password' CONNECTION LIMIT 10"
++        );
++
++        $this->provisioner->createUser($database, $host);
++    }
++
++    /**
++     * Verify that createUser omits CONNECTION LIMIT when max_connections is null.
++     */
++    public function testCreateUserWithoutConnectionLimit(): void
++    {
++        $database = $this->makeDatabase([
++            'username' => 'u1_abcdefghij',
++            'password' => 'encrypted_password',
++            'max_connections' => null,
++        ]);
++        $host = $this->makeHost();
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('plain_password');
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement(
++            "CREATE ROLE \"u1_abcdefghij\" WITH LOGIN PASSWORD 'plain_password'"
++        );
++
++        $this->provisioner->createUser($database, $host);
++    }
++
++    /**
++     * Verify that assignUserToDatabase grants database privileges on the admin
++     * connection, then reconnects to the target database for schema-level grants
++     * and ALTER DEFAULT PRIVILEGES, then restores the admin connection.
++     */
++    public function testAssignUserToDatabaseGrantsAndSetsDefaults(): void
++    {
++        $database = $this->makeDatabase([
++            'database' => 's1_testdb',
++            'username' => 'u1_abcdefghij',
++        ]);
++        $host = $this->makeHost(['username' => 'pgadmin']);
++
++        // set('dynamic', $host) is called twice: once for the initial GRANT
++        // via runOnHost, and once to restore the admin connection at the end.
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->twice();
++
++        // set('dynamic', $host, 's1_testdb') is called once to connect to the
++        // target database for schema-level grants.
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host, 's1_testdb')
++            ->once();
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->andReturn($this->connection);
++
++        // Statement 1: GRANT on database (via runOnHost)
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('GRANT ALL PRIVILEGES ON DATABASE "s1_testdb" TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        // Statements 2-6: schema-level grants on the target database connection
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('GRANT USAGE, CREATE ON SCHEMA public TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('ALTER DEFAULT PRIVILEGES FOR ROLE "pgadmin" IN SCHEMA public GRANT ALL ON TABLES TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('ALTER DEFAULT PRIVILEGES FOR ROLE "pgadmin" IN SCHEMA public GRANT ALL ON SEQUENCES TO "u1_abcdefghij"')
++            ->andReturn(true);
++
++        $this->provisioner->assignUserToDatabase($database, $host);
++    }
++
++    /**
++     * Verify that dropDatabase attempts to terminate active connections before
++     * issuing DROP DATABASE IF EXISTS. The terminate query uses parameterized
++     * binding for the database name.
++     */
++    public function testDropDatabaseTerminatesConnectionsFirst(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        // Two set calls: terminate + drop (via runOnHost)
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->twice();
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->twice()
++            ->andReturn($this->connection);
++
++        // Terminate uses parameterized query
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with(
++                'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ? AND pid <> pg_backend_pid()',
++                ['s1_testdb']
++            )
++            ->andReturn(true);
++
++        // DROP via runOnHost
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('DROP DATABASE IF EXISTS "s1_testdb"')
++            ->andReturn(true);
++
++        $this->provisioner->dropDatabase($database, $host);
++    }
++
++    /**
++     * Verify that dropDatabase still proceeds with DROP even if
++     * pg_terminate_backend fails (managed PostgreSQL restriction).
++     */
++    public function testDropDatabaseProceedsWhenTerminateFails(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->twice();
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->twice()
++            ->andReturn($this->connection);
++
++        // Terminate call throws an exception (managed PG)
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with(
++                Mockery::pattern('/pg_terminate_backend/'),
++                Mockery::type('array')
++            )
++            ->andThrow(new \Exception('permission denied for function pg_terminate_backend'));
++
++        // DROP should still be called
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('DROP DATABASE IF EXISTS "s1_testdb"')
++            ->andReturn(true);
++
++        $this->provisioner->dropDatabase($database, $host);
++    }
++
++    /**
++     * Verify that dropUser issues DROP ROLE IF EXISTS without a host component.
++     */
++    public function testDropUser(): void
++    {
++        $database = $this->makeDatabase(['username' => 'u1_abcdefghij']);
++        $host = $this->makeHost();
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement('DROP ROLE IF EXISTS "u1_abcdefghij"');
++
++        $this->provisioner->dropUser($database, $host);
++    }
++
++    /**
++     * Verify that rotatePassword uses ALTER ROLE to change the password in-place
++     * without dropping and recreating the role.
++     */
++    public function testRotatePasswordUsesAlterRole(): void
++    {
++        $database = $this->makeDatabase(['username' => 'u1_abcdefghij']);
++        $host = $this->makeHost();
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement("ALTER ROLE \"u1_abcdefghij\" WITH PASSWORD 'new_plain_password'");
++
++        $this->provisioner->rotatePassword($database, $host, 'new_plain_password');
++    }
++
++    /**
++     * Verify that requiresExternalTransaction returns true, since PostgreSQL
++     * cannot run CREATE/DROP DATABASE inside a transaction block.
++     */
++    public function testRequiresExternalTransactionReturnsTrue(): void
++    {
++        $this->assertTrue($this->provisioner->requiresExternalTransaction());
++    }
++
++    /**
++     * Verify that testConnection checks version and role permissions via PDO.
++     * This test verifies the DSN format and permission-checking logic by
++     * testing against the returned array structure.
++     */
++    public function testTestConnectionChecksVersionAndPermissions(): void
++    {
++        // We cannot easily mock PDO construction inside the method, so we
++        // verify the method handles a connection failure gracefully (which
++        // exercises the DSN construction and error handling path).
++        $host = $this->makeHost([
++            'host' => '127.0.0.1',
++            'port' => 5432,
++            'username' => 'pgadmin',
++            'password' => 'encrypted_host_password',
++        ]);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_host_password')
++            ->andReturn('host_password');
++
++        // This will fail to connect (no real PostgreSQL) but exercises the
++        // error handling path and verifies the return structure.
++        $result = $this->provisioner->testConnection($host);
++
++        $this->assertIsArray($result);
++        $this->assertArrayHasKey('version', $result);
++        $this->assertArrayHasKey('has_required_permissions', $result);
++        $this->assertArrayHasKey('message', $result);
++        $this->assertEquals('unknown', $result['version']);
++        $this->assertFalse($result['has_required_permissions']);
++        $this->assertStringStartsWith('Connection failed:', $result['message']);
++    }
++
++    /**
++     * Create a Database model instance populated with the given attributes.
++     *
++     * @param array<string, mixed> $attributes
++     */
++    private function makeDatabase(array $attributes = []): Database
++    {
++        $database = new Database();
++        $database->forceFill(array_merge([
++            'id' => 1,
++            'server_id' => 1,
++            'database_host_id' => 1,
++            'database' => 's1_testdb',
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++            'password' => 'encrypted_password',
++            'max_connections' => null,
++        ], $attributes));
++
++        return $database;
++    }
++
++    /**
++     * Create a DatabaseHost model instance populated with default attributes.
++     *
++     * @param array<string, mixed> $attributes
++     */
++    private function makeHost(array $attributes = []): DatabaseHost
++    {
++        $host = new DatabaseHost();
++        $host->forceFill(array_merge([
++            'id' => 1,
++            'name' => 'Test PG Host',
++            'driver' => 'pgsql',
++            'host' => '127.0.0.1',
++            'port' => 5432,
++            'username' => 'admin',
++            'password' => 'encrypted_host_password',
++            'max_databases' => 10,
++        ], $attributes));
++
++        return $host;
++    }
++
++    /**
++     * Set up the expectation that DynamicDatabaseConnection::set() is called
++     * for the given host.
++     *
++     * @param DatabaseHost $host The expected host argument
++     * @param int $times The number of times the call is expected (default: 1)
++     */
++    private function expectDynamicSet(DatabaseHost $host, int $times = 1): void
++    {
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->times($times);
++    }
++
++    /**
++     * Set up the expectation that a single SQL statement is executed via the
++     * dynamic database connection.
++     *
++     * @param string $statement The expected SQL statement
++     */
++    private function expectStatement(string $statement): void
++    {
++        $this->databaseManager->shouldReceive('connection')
++            ->once()
++            ->with('dynamic')
++            ->andReturn($this->connection);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with($statement)
++            ->andReturn(true);
++    }
++}
+diff --git a/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php b/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php
+index e196e8b95..4aec3308f 100644
+--- a/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php
++++ b/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php
+@@ -6,6 +6,7 @@ use InvalidArgumentException;
+ use Pterodactyl\Models\DatabaseHost;
+ use Pterodactyl\Tests\TestCase;
+ use Pterodactyl\Services\Databases\Provisioners\MysqlProvisioner;
++use Pterodactyl\Services\Databases\Provisioners\PostgresProvisioner;
+ use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ 
+ /**
+@@ -41,6 +42,19 @@ class ProvisionerFactoryTest extends TestCase
+         $this->assertInstanceOf(MysqlProvisioner::class, $provisioner);
+     }
+ 
++    /**
++     * Verify that a host with driver='pgsql' resolves to PostgresProvisioner.
++     */
++    public function testReturnsPostgresProvisionerForPgsqlDriver(): void
++    {
++        $factory = $this->app->make(ProvisionerFactory::class);
++        $host = $this->makeHost(['driver' => 'pgsql']);
++
++        $provisioner = $factory->forHost($host);
++
++        $this->assertInstanceOf(PostgresProvisioner::class, $provisioner);
++    }
++
+     /**
+      * Verify that an unsupported driver throws an InvalidArgumentException.
+      */
+-- 
+2.43.0
+

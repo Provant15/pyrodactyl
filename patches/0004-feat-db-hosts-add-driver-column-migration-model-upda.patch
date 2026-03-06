@@ -1,0 +1,416 @@
+From b13ec3dee05f739a0fa3672a2c05de698a169825 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:35:52 +1000
+Subject: [PATCH 04/10] feat(db-hosts): add driver column migration, model
+ updates, and driver-aware DynamicDatabaseConnection
+
+
+diff --git a/app/Extensions/DynamicDatabaseConnection.php b/app/Extensions/DynamicDatabaseConnection.php
+index 2bed3436e..83ddc5669 100644
+--- a/app/Extensions/DynamicDatabaseConnection.php
++++ b/app/Extensions/DynamicDatabaseConnection.php
+@@ -7,15 +7,13 @@ use Illuminate\Contracts\Encryption\Encrypter;
+ use Illuminate\Config\Repository as ConfigRepository;
+ use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
+ 
++/**
++ * Registers dynamic database connections at runtime based on a DatabaseHost
++ * model. Supports MySQL and PostgreSQL drivers with appropriate connection
++ * parameters for each engine.
++ */
+ class DynamicDatabaseConnection
+ {
+-    public const DB_CHARSET = 'utf8';
+-    public const DB_COLLATION = 'utf8_unicode_ci';
+-    public const DB_DRIVER = 'mysql';
+-
+-    /**
+-     * DynamicDatabaseConnection constructor.
+-     */
+     public function __construct(
+         protected ConfigRepository $config,
+         protected Encrypter $encrypter,
+@@ -26,23 +24,50 @@ class DynamicDatabaseConnection
+     /**
+      * Adds a dynamic database connection entry to the runtime config.
+      *
++     * Builds the connection array with driver-specific parameters:
++     * - MySQL: charset, collation, default database 'mysql'
++     * - PostgreSQL: charset, sslmode, search_path, default database 'postgres'
++     *
++     * @param string              $connection The Laravel connection name to register.
++     * @param DatabaseHost|int    $host       A DatabaseHost model or its ID.
++     * @param string|null         $database   Database name override. When null, the
++     *                                        driver's administrative database is used.
++     *
+      * @throws \Pterodactyl\Exceptions\Repository\RecordNotFoundException
+      */
+-    public function set(string $connection, DatabaseHost|int $host, string $database = 'mysql'): void
++    public function set(string $connection, DatabaseHost|int $host, ?string $database = null): void
+     {
+         if (!$host instanceof DatabaseHost) {
+             $host = $this->repository->find($host);
+         }
+ 
+-        $this->config->set('database.connections.' . $connection, [
+-            'driver' => self::DB_DRIVER,
+-            'host' => $host->host,
+-            'port' => $host->port,
+-            'database' => $database,
+-            'username' => $host->username,
+-            'password' => $this->encrypter->decrypt($host->password),
+-            'charset' => self::DB_CHARSET,
+-            'collation' => self::DB_COLLATION,
+-        ]);
++        $driver = $host->driver ?? 'mysql';
++
++        $config = match ($driver) {
++            'pgsql' => [
++                'driver' => 'pgsql',
++                'host' => $host->host,
++                'port' => $host->port,
++                'database' => $database ?? 'postgres',
++                'username' => $host->username,
++                'password' => $this->encrypter->decrypt($host->password),
++                'charset' => 'utf8',
++                'sslmode' => 'prefer',
++                'search_path' => 'public',
++            ],
++            'mysql' => [
++                'driver' => 'mysql',
++                'host' => $host->host,
++                'port' => $host->port,
++                'database' => $database ?? 'mysql',
++                'username' => $host->username,
++                'password' => $this->encrypter->decrypt($host->password),
++                'charset' => 'utf8',
++                'collation' => 'utf8_unicode_ci',
++            ],
++            default => throw new \InvalidArgumentException("Unsupported database driver: {$driver}"),
++        };
++
++        $this->config->set('database.connections.' . $connection, $config);
+     }
+ }
+diff --git a/app/Models/DatabaseHost.php b/app/Models/DatabaseHost.php
+index b960044cc..9845e372b 100644
+--- a/app/Models/DatabaseHost.php
++++ b/app/Models/DatabaseHost.php
+@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
+ /**
+  * @property int $id
+  * @property string $name
++ * @property string $driver
+  * @property string $host
+  * @property int $port
+  * @property string $username
+@@ -46,6 +47,7 @@ class DatabaseHost extends Model
+      */
+     protected $fillable = [
+         'name',
++        'driver',
+         'host',
+         'port',
+         'username',
+@@ -68,6 +70,7 @@ class DatabaseHost extends Model
+      */
+     public static array $validationRules = [
+         'name' => 'required|string|max:191',
++        'driver' => 'sometimes|required|in:mysql,pgsql',
+         'host' => 'required|string|regex:/^[\w\-\.]+$/',
+         'port' => 'required|numeric|between:1,65535',
+         'username' => 'required|string|max:32',
+diff --git a/database/Factories/DatabaseHostFactory.php b/database/Factories/DatabaseHostFactory.php
+index 11ccc9f01..9f0ae51d1 100644
+--- a/database/Factories/DatabaseHostFactory.php
++++ b/database/Factories/DatabaseHostFactory.php
+@@ -22,10 +22,22 @@ class DatabaseHostFactory extends Factory
+   {
+     return [
+       'name' => $this->faker->colorName,
++      'driver' => 'mysql',
+       'host' => $this->faker->unique()->ipv4,
+       'port' => 3306,
+       'username' => $this->faker->colorName,
+       'password' => Crypt::encrypt($this->faker->word),
+     ];
+   }
++
++  /**
++   * Configure the factory to create a PostgreSQL host.
++   */
++  public function pgsql(): static
++  {
++    return $this->state(fn (array $attributes) => [
++      'driver' => 'pgsql',
++      'port' => 5432,
++    ]);
++  }
+ }
+diff --git a/database/migrations/2026_03_06_000000_add_driver_column_to_database_hosts.php b/database/migrations/2026_03_06_000000_add_driver_column_to_database_hosts.php
+new file mode 100644
+index 000000000..2d4160866
+--- /dev/null
++++ b/database/migrations/2026_03_06_000000_add_driver_column_to_database_hosts.php
+@@ -0,0 +1,26 @@
++<?php
++
++use Illuminate\Support\Facades\Schema;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Database\Migrations\Migration;
++
++/**
++ * Adds a `driver` column to the `database_hosts` table to support
++ * multiple database engines (MySQL, PostgreSQL) per host entry.
++ */
++return new class extends Migration
++{
++    public function up(): void
++    {
++        Schema::table('database_hosts', function (Blueprint $table) {
++            $table->string('driver', 10)->default('mysql')->after('name');
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::table('database_hosts', function (Blueprint $table) {
++            $table->dropColumn('driver');
++        });
++    }
++};
+diff --git a/tests/Unit/Extensions/DynamicDatabaseConnectionTest.php b/tests/Unit/Extensions/DynamicDatabaseConnectionTest.php
+new file mode 100644
+index 000000000..7ebb8c8ac
+--- /dev/null
++++ b/tests/Unit/Extensions/DynamicDatabaseConnectionTest.php
+@@ -0,0 +1,226 @@
++<?php
++
++namespace Pterodactyl\Tests\Unit\Extensions;
++
++use Mockery;
++use Mockery\MockInterface;
++use Pterodactyl\Models\DatabaseHost;
++use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Tests\TestCase;
++use Illuminate\Contracts\Encryption\Encrypter;
++use Illuminate\Config\Repository as ConfigRepository;
++use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
++
++/**
++ * Verifies that DynamicDatabaseConnection builds the correct runtime
++ * database configuration array for each supported driver (MySQL, PostgreSQL).
++ */
++class DynamicDatabaseConnectionTest extends TestCase
++{
++    private MockInterface&ConfigRepository $config;
++    private MockInterface&Encrypter $encrypter;
++    private MockInterface&DatabaseHostRepositoryInterface $repository;
++    private DynamicDatabaseConnection $connection;
++
++    /**
++     * Set up test dependencies with Mockery mocks.
++     */
++    public function setUp(): void
++    {
++        parent::setUp();
++
++        $this->config = Mockery::mock(ConfigRepository::class);
++        $this->encrypter = Mockery::mock(Encrypter::class);
++        $this->repository = Mockery::mock(DatabaseHostRepositoryInterface::class);
++
++        $this->connection = new DynamicDatabaseConnection(
++            $this->config,
++            $this->encrypter,
++            $this->repository,
++        );
++    }
++
++    /**
++     * Verify that a MySQL host produces a config with charset, collation,
++     * and defaults to the 'mysql' administrative database.
++     */
++    public function testMysqlHostProducesCorrectConfig(): void
++    {
++        $host = $this->makeHost(['driver' => 'mysql']);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', [
++                'driver' => 'mysql',
++                'host' => '127.0.0.1',
++                'port' => 3306,
++                'database' => 'mysql',
++                'username' => 'admin',
++                'password' => 'decrypted_password',
++                'charset' => 'utf8',
++                'collation' => 'utf8_unicode_ci',
++            ]);
++
++        $this->connection->set('dynamic', $host);
++    }
++
++    /**
++     * Verify that a PostgreSQL host produces a config with sslmode,
++     * search_path, no collation, and defaults to the 'postgres' database.
++     */
++    public function testPgsqlHostProducesCorrectConfig(): void
++    {
++        $host = $this->makeHost(['driver' => 'pgsql', 'port' => 5432]);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', [
++                'driver' => 'pgsql',
++                'host' => '127.0.0.1',
++                'port' => 5432,
++                'database' => 'postgres',
++                'username' => 'admin',
++                'password' => 'decrypted_password',
++                'charset' => 'utf8',
++                'sslmode' => 'prefer',
++                'search_path' => 'public',
++            ]);
++
++        $this->connection->set('dynamic', $host);
++    }
++
++    /**
++     * Verify that a custom database name overrides the default for MySQL.
++     */
++    public function testCustomDatabaseOverridesDefaultForMysql(): void
++    {
++        $host = $this->makeHost(['driver' => 'mysql']);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', Mockery::on(function (array $config) {
++                return $config['database'] === 'my_custom_db'
++                    && $config['driver'] === 'mysql';
++            }));
++
++        $this->connection->set('dynamic', $host, 'my_custom_db');
++    }
++
++    /**
++     * Verify that a custom database name overrides the default for PostgreSQL.
++     */
++    public function testCustomDatabaseOverridesDefaultForPgsql(): void
++    {
++        $host = $this->makeHost(['driver' => 'pgsql', 'port' => 5432]);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', Mockery::on(function (array $config) {
++                return $config['database'] === 'my_custom_db'
++                    && $config['driver'] === 'pgsql';
++            }));
++
++        $this->connection->set('dynamic', $host, 'my_custom_db');
++    }
++
++    /**
++     * Verify that passing an integer host ID triggers a repository lookup.
++     */
++    public function testHostLoadedByIdCallsRepository(): void
++    {
++        $host = $this->makeHost(['driver' => 'mysql']);
++
++        $this->repository->shouldReceive('find')
++            ->once()
++            ->with(42)
++            ->andReturn($host);
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', Mockery::on(function (array $config) {
++                return $config['driver'] === 'mysql'
++                    && $config['database'] === 'mysql';
++            }));
++
++        $this->connection->set('dynamic', 42);
++    }
++
++    /**
++     * Verify that a host without a driver set defaults to MySQL behaviour.
++     */
++    public function testNullDriverDefaultsToMysql(): void
++    {
++        $host = $this->makeHost();
++        // driver is not set, so $host->driver returns null
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->andReturn('decrypted_password');
++
++        $this->config->shouldReceive('set')
++            ->once()
++            ->with('database.connections.dynamic', Mockery::on(function (array $config) {
++                return $config['driver'] === 'mysql'
++                    && $config['collation'] === 'utf8_unicode_ci'
++                    && $config['database'] === 'mysql';
++            }));
++
++        $this->connection->set('dynamic', $host);
++    }
++
++    /**
++     * Verify that an unsupported driver throws an InvalidArgumentException.
++     */
++    public function testUnsupportedDriverThrowsException(): void
++    {
++        $host = $this->makeHost(['driver' => 'sqlite']);
++
++        $this->expectException(\InvalidArgumentException::class);
++        $this->expectExceptionMessage('Unsupported database driver: sqlite');
++
++        $this->connection->set('dynamic', $host);
++    }
++
++    /**
++     * Create a DatabaseHost model instance populated with test attributes.
++     *
++     * @param array<string, mixed> $attributes Additional or override attributes.
++     */
++    private function makeHost(array $attributes = []): DatabaseHost
++    {
++        $host = new DatabaseHost();
++        $host->forceFill(array_merge([
++            'id' => 1,
++            'name' => 'Test Host',
++            'host' => '127.0.0.1',
++            'port' => 3306,
++            'username' => 'admin',
++            'password' => 'encrypted_password',
++            'max_databases' => 10,
++        ], $attributes));
++
++        return $host;
++    }
++}
+-- 
+2.43.0
+

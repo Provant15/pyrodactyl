@@ -1,0 +1,188 @@
+From 3dff291619f1a6beee32c9353837681723c9ba6c Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:47:21 +1000
+Subject: [PATCH 06/10] feat(db-hosts): wire driver through API validators,
+ transformers, and controllers
+
+Make the remote field optional for PostgreSQL database hosts across all
+API layers. PostgreSQL does not use MySQL-style user@host grants, so
+requiring a remote connection string is incorrect for pgsql hosts.
+
+- DeployServerDatabaseService: remove Assert on remote, default to '%'
+- Database model: change remote rule to sometimes|required
+- Admin StoreServerDatabaseRequest: conditionally require remote based
+  on the selected host's driver via prepareForValidation()
+- App API StoreServerDatabaseRequest: make remote sometimes|nullable,
+  default to '%' in validated()
+- Client DatabaseTransformer: expose driver in host sub-object
+- App DatabaseHostTransformer: expose driver field
+- Admin ServersController: default remote to '%' when not provided
+
+diff --git a/app/Http/Controllers/Admin/ServersController.php b/app/Http/Controllers/Admin/ServersController.php
+index 73bb7624e..76679a9eb 100644
+--- a/app/Http/Controllers/Admin/ServersController.php
++++ b/app/Http/Controllers/Admin/ServersController.php
+@@ -206,7 +206,7 @@ class ServersController extends Controller
+     {
+         $this->databaseManagementService->create($server, [
+             'database' => DatabaseManagementService::generateUniqueDatabaseName($request->input('database'), $server->id),
+-            'remote' => $request->input('remote'),
++            'remote' => $request->input('remote', '%'),
+             'database_host_id' => $request->input('database_host_id'),
+             'max_connections' => $request->input('max_connections'),
+         ]);
+diff --git a/app/Http/Requests/Admin/Servers/Databases/StoreServerDatabaseRequest.php b/app/Http/Requests/Admin/Servers/Databases/StoreServerDatabaseRequest.php
+index 144755d2b..0e484da3d 100644
+--- a/app/Http/Requests/Admin/Servers/Databases/StoreServerDatabaseRequest.php
++++ b/app/Http/Requests/Admin/Servers/Databases/StoreServerDatabaseRequest.php
+@@ -3,16 +3,37 @@
+ namespace Pterodactyl\Http\Requests\Admin\Servers\Databases;
+ 
+ use Illuminate\Validation\Rule;
++use Pterodactyl\Models\DatabaseHost;
+ use Illuminate\Database\Query\Builder;
+ use Pterodactyl\Http\Requests\Admin\AdminFormRequest;
+ 
+ class StoreServerDatabaseRequest extends AdminFormRequest
+ {
++    /**
++     * Resolve the database host driver before validation so rules can
++     * conditionally require the remote field for MySQL hosts only.
++     */
++    protected function prepareForValidation(): void
++    {
++        if ($this->filled('database_host_id')) {
++            $host = DatabaseHost::find($this->input('database_host_id'));
++            if ($host) {
++                $this->merge(['_driver' => $host->driver ?? 'mysql']);
++            }
++        }
++    }
++
+     /**
+      * Validation rules for database creation.
++     *
++     * The `remote` field (allowed connection hosts) is required for MySQL
++     * database hosts but optional for PostgreSQL, which does not use the
++     * MySQL-style user@host grant model.
+      */
+     public function rules(): array
+     {
++        $isMysql = ($this->input('_driver', 'mysql')) === 'mysql';
++
+         return [
+             'database' => [
+                 'required',
+@@ -24,7 +45,9 @@ class StoreServerDatabaseRequest extends AdminFormRequest
+                 }),
+             ],
+             'max_connections' => 'nullable',
+-            'remote' => 'required|string|regex:/^[0-9%.]{1,15}$/',
++            'remote' => $isMysql
++                ? 'required|string|regex:/^[0-9%.]{1,15}$/'
++                : 'nullable|string|regex:/^[0-9%.]{1,15}$/',
+             'database_host_id' => 'required|integer|exists:database_hosts,id',
+         ];
+     }
+diff --git a/app/Http/Requests/Api/Application/Servers/Databases/StoreServerDatabaseRequest.php b/app/Http/Requests/Api/Application/Servers/Databases/StoreServerDatabaseRequest.php
+index d53a0a75e..e2a7e0ff9 100644
+--- a/app/Http/Requests/Api/Application/Servers/Databases/StoreServerDatabaseRequest.php
++++ b/app/Http/Requests/Api/Application/Servers/Databases/StoreServerDatabaseRequest.php
+@@ -33,7 +33,7 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
+                     $query->where('server_id', $server->id)->where('database', $this->databaseName());
+                 }),
+             ],
+-            'remote' => 'required|string|regex:/^[0-9%.]{1,15}$/',
++            'remote' => 'sometimes|nullable|string|regex:/^[0-9%.]{1,15}$/',
+             'host' => 'required|integer|exists:database_hosts,id',
+         ];
+     }
+@@ -45,7 +45,7 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
+     {
+         return [
+             'database' => $this->input('database'),
+-            'remote' => $this->input('remote'),
++            'remote' => $this->input('remote', '%'),
+             'database_host_id' => $this->input('host'),
+         ];
+     }
+diff --git a/app/Models/Database.php b/app/Models/Database.php
+index ceaa01a0d..48cc98b21 100644
+--- a/app/Models/Database.php
++++ b/app/Models/Database.php
+@@ -70,7 +70,7 @@ class Database extends Model
+     'database' => 'required|string|alpha_dash|between:3,48',
+     'username' => 'string|alpha_dash|between:3,100',
+     'max_connections' => 'nullable|integer',
+-    'remote' => 'required|string|regex:/^[\w\-\/.%:]+$/',
++    'remote' => 'sometimes|required|string|regex:/^[\w\-\/.%:]+$/',
+     'password' => 'string',
+   ];
+ 
+diff --git a/app/Services/Databases/DeployServerDatabaseService.php b/app/Services/Databases/DeployServerDatabaseService.php
+index e22eba51d..7db2f3e96 100644
+--- a/app/Services/Databases/DeployServerDatabaseService.php
++++ b/app/Services/Databases/DeployServerDatabaseService.php
+@@ -18,14 +18,24 @@ class DeployServerDatabaseService
+     }
+ 
+     /**
+-     * @throws \Throwable
++     * Deploy a database for the given server, selecting a suitable host.
++     *
++     * Picks a database host on the same node when available, otherwise falls
++     * back to a random host if the configuration allows it. The `remote` field
++     * defaults to '%' (allow all) when not supplied - PostgreSQL hosts do not
++     * use user@host grants, so requiring it would be incorrect.
++     *
++     * @param Server $server The server to create a database for.
++     * @param array  $data   Must contain 'database'; 'remote' is optional.
++     *
++     * @throws \Pterodactyl\Exceptions\Service\Database\NoSuitableDatabaseHostException
+      * @throws \Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException
+      * @throws \Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException
++     * @throws \Throwable
+      */
+     public function handle(Server $server, array $data): Database
+     {
+         Assert::notEmpty($data['database'] ?? null);
+-        Assert::notEmpty($data['remote'] ?? null);
+ 
+         $hosts = DatabaseHost::query()->get()->toBase();
+         if ($hosts->isEmpty()) {
+@@ -43,7 +53,7 @@ class DeployServerDatabaseService
+                 ? $hosts->random()->id
+                 : $nodeHosts->random()->id,
+             'database' => DatabaseManagementService::generateUniqueDatabaseName($data['database'], $server->id),
+-            'remote' => $data['remote'],
++            'remote' => $data['remote'] ?? '%',
+         ]);
+     }
+ }
+diff --git a/app/Transformers/Api/Application/DatabaseHostTransformer.php b/app/Transformers/Api/Application/DatabaseHostTransformer.php
+index 019fdf261..ffac6a570 100644
+--- a/app/Transformers/Api/Application/DatabaseHostTransformer.php
++++ b/app/Transformers/Api/Application/DatabaseHostTransformer.php
+@@ -30,6 +30,7 @@ class DatabaseHostTransformer extends BaseTransformer
+         return [
+             'id' => $model->id,
+             'name' => $model->name,
++            'driver' => $model->driver ?? 'mysql',
+             'host' => $model->host,
+             'port' => $model->port,
+             'username' => $model->username,
+diff --git a/app/Transformers/Api/Client/DatabaseTransformer.php b/app/Transformers/Api/Client/DatabaseTransformer.php
+index 23e966637..1afd7cfa6 100644
+--- a/app/Transformers/Api/Client/DatabaseTransformer.php
++++ b/app/Transformers/Api/Client/DatabaseTransformer.php
+@@ -40,6 +40,7 @@ class DatabaseTransformer extends BaseClientTransformer
+             'host' => [
+                 'address' => $model->getRelation('host')->host,
+                 'port' => $model->getRelation('host')->port,
++                'driver' => $model->getRelation('host')->driver ?? 'mysql',
+             ],
+             'name' => $model->database,
+             'username' => $model->username,
+-- 
+2.43.0
+

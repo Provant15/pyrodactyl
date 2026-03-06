@@ -1,0 +1,797 @@
+From f9131186bd918824d8be9c45411c960b73226ad5 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:16:07 +1000
+Subject: [PATCH 01/10] feat(db-hosts): add DatabaseProvisionerInterface,
+ MysqlProvisioner, and ProvisionerFactory
+
+
+diff --git a/app/Contracts/Database/DatabaseProvisionerInterface.php b/app/Contracts/Database/DatabaseProvisionerInterface.php
+new file mode 100644
+index 000000000..f8bead70a
+--- /dev/null
++++ b/app/Contracts/Database/DatabaseProvisionerInterface.php
+@@ -0,0 +1,95 @@
++<?php
++
++namespace Pterodactyl\Contracts\Database;
++
++use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
++
++/**
++ * Defines the contract for database provisioning operations.
++ *
++ * Each database engine (MySQL, PostgreSQL) implements this interface
++ * to handle engine-specific SQL, connection semantics, and permission models.
++ * Methods accept Eloquent model context objects so each implementation can
++ * read whatever fields it needs (e.g. MySQL reads $database->remote;
++ * PostgreSQL ignores it).
++ */
++interface DatabaseProvisionerInterface
++{
++    /**
++     * Create a new database on the remote host.
++     *
++     * @param Database $database The database model (contains name, username, etc.)
++     * @param DatabaseHost $host The host to create the database on
++     *
++     * @throws \Exception If creation fails
++     */
++    public function createDatabase(Database $database, DatabaseHost $host): void;
++
++    /**
++     * Create a new user/role on the remote host.
++     *
++     * @param Database $database The database model (contains username, password, remote, max_connections)
++     * @param DatabaseHost $host The host to create the user on
++     *
++     * @throws \Exception If user creation fails
++     */
++    public function createUser(Database $database, DatabaseHost $host): void;
++
++    /**
++     * Grant the database user access to its database.
++     *
++     * @param Database $database The database model (contains database name, username, remote)
++     * @param DatabaseHost $host The host where grants are applied
++     *
++     * @throws \Exception If grant fails
++     */
++    public function assignUserToDatabase(Database $database, DatabaseHost $host): void;
++
++    /**
++     * Drop a database from the remote host.
++     *
++     * @param Database $database The database model
++     * @param DatabaseHost $host The host to drop the database from
++     *
++     * @throws \Exception If drop fails
++     */
++    public function dropDatabase(Database $database, DatabaseHost $host): void;
++
++    /**
++     * Drop a user/role from the remote host.
++     *
++     * @param Database $database The database model (contains username, remote)
++     * @param DatabaseHost $host The host to drop the user from
++     *
++     * @throws \Exception If drop fails
++     */
++    public function dropUser(Database $database, DatabaseHost $host): void;
++
++    /**
++     * Rotate the password for an existing database user.
++     *
++     * @param Database $database The database model (contains username, remote)
++     * @param DatabaseHost $host The host where the user exists
++     * @param string $newPassword The new plaintext password
++     *
++     * @throws \Exception If rotation fails
++     */
++    public function rotatePassword(Database $database, DatabaseHost $host, string $newPassword): void;
++
++    /**
++     * Test connectivity and verify the admin user has sufficient privileges
++     * to provision databases on this host.
++     *
++     * @param DatabaseHost $host The host to test
++     *
++     * @return array{version: string, has_required_permissions: bool, message: string}
++     *
++     * @throws \Exception If connection fails
++     */
++    public function testConnection(DatabaseHost $host): array;
++
++    // Future: shared database support (see Appendix A of postgres-db-hosts-plan.md)
++    // public function grantAccess(Database $database, DatabaseHost $host, string $username, string $password): void;
++    // public function revokeAccess(Database $database, DatabaseHost $host, string $username): void;
++}
+diff --git a/app/Services/Databases/Provisioners/MysqlProvisioner.php b/app/Services/Databases/Provisioners/MysqlProvisioner.php
+new file mode 100644
+index 000000000..b798c15e2
+--- /dev/null
++++ b/app/Services/Databases/Provisioners/MysqlProvisioner.php
+@@ -0,0 +1,215 @@
++<?php
++
++namespace Pterodactyl\Services\Databases\Provisioners;
++
++use PDO;
++use PDOException;
++use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
++use Illuminate\Database\DatabaseManager;
++use Illuminate\Contracts\Encryption\Encrypter;
++use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Contracts\Database\DatabaseProvisionerInterface;
++
++/**
++ * Handles MySQL-specific database provisioning operations.
++ *
++ * Executes raw SQL statements against remote MySQL hosts to create/drop
++ * databases, manage users, and control permissions. Uses the dynamic
++ * database connection system to establish connections to remote hosts
++ * at runtime.
++ */
++class MysqlProvisioner implements DatabaseProvisionerInterface
++{
++    /**
++     * The set of grants given to database users for their assigned databases.
++     */
++    private const USER_GRANTS = 'SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, '
++        . 'REFERENCES, INDEX, LOCK TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, '
++        . 'CREATE TEMPORARY TABLES, CREATE VIEW, SHOW VIEW, EVENT, TRIGGER';
++
++    public function __construct(
++        private DatabaseManager $databaseManager,
++        private DynamicDatabaseConnection $dynamic,
++        private Encrypter $encrypter,
++    ) {}
++
++    /**
++     * {@inheritDoc}
++     */
++    public function createDatabase(Database $database, DatabaseHost $host): void
++    {
++        $this->runOnHost($host, sprintf(
++            'CREATE DATABASE IF NOT EXISTS %s',
++            $this->quoteIdentifier($database->database)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Decrypts the password stored on the Database model and creates a MySQL
++     * user with an optional MAX_USER_CONNECTIONS limit.
++     */
++    public function createUser(Database $database, DatabaseHost $host): void
++    {
++        $password = $this->encrypter->decrypt($database->password);
++        $remote = $database->remote ?? '%';
++
++        $command = sprintf(
++            'CREATE USER %s@%s IDENTIFIED BY \'%s\'',
++            $this->quoteIdentifier($database->username),
++            $this->quoteIdentifier($remote),
++            $this->escapeLiteral($password)
++        );
++
++        if (!empty($database->max_connections)) {
++            $command .= sprintf(' WITH MAX_USER_CONNECTIONS %d', (int) $database->max_connections);
++        }
++
++        $this->runOnHost($host, $command);
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Grants a standard set of privileges on the database and flushes the
++     * MySQL privilege tables to ensure changes take effect immediately.
++     */
++    public function assignUserToDatabase(Database $database, DatabaseHost $host): void
++    {
++        $remote = $database->remote ?? '%';
++
++        $this->runOnHost($host, sprintf(
++            'GRANT %s ON %s.* TO %s@%s',
++            self::USER_GRANTS,
++            $this->quoteIdentifier($database->database),
++            $this->quoteIdentifier($database->username),
++            $this->quoteIdentifier($remote)
++        ));
++
++        $this->runOnHost($host, 'FLUSH PRIVILEGES');
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public function dropDatabase(Database $database, DatabaseHost $host): void
++    {
++        $this->runOnHost($host, sprintf(
++            'DROP DATABASE IF EXISTS %s',
++            $this->quoteIdentifier($database->database)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public function dropUser(Database $database, DatabaseHost $host): void
++    {
++        $remote = $database->remote ?? '%';
++
++        $this->runOnHost($host, sprintf(
++            'DROP USER IF EXISTS %s@%s',
++            $this->quoteIdentifier($database->username),
++            $this->quoteIdentifier($remote)
++        ));
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Rotates a MySQL user's password by dropping and recreating the user,
++     * then re-granting permissions. This approach ensures a clean state
++     * regardless of the MySQL version's ALTER USER support.
++     */
++    public function rotatePassword(Database $database, DatabaseHost $host, string $newPassword): void
++    {
++        $this->dropUser($database, $host);
++
++        // Build a temporary Database model with the new encrypted password
++        // so createUser() can decrypt it via the standard path.
++        $tempDatabase = clone $database;
++        $tempDatabase->forceFill([
++            'password' => $this->encrypter->encrypt($newPassword),
++        ]);
++
++        $this->createUser($tempDatabase, $host);
++        $this->assignUserToDatabase($database, $host);
++    }
++
++    /**
++     * {@inheritDoc}
++     *
++     * Opens a raw PDO connection to the MySQL host using the admin credentials,
++     * then checks the server version and verifies that the admin user holds
++     * sufficient privileges (GRANT OPTION) to manage databases.
++     */
++    public function testConnection(DatabaseHost $host): array
++    {
++        $password = $this->encrypter->decrypt($host->password);
++        $dsn = sprintf('mysql:host=%s;port=%d', $host->host, $host->port);
++
++        try {
++            $pdo = new PDO($dsn, $host->username, $password, [
++                PDO::ATTR_TIMEOUT => 5,
++                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
++            ]);
++
++            $version = $pdo->query('SELECT VERSION()')->fetchColumn();
++            $grants = $pdo->query('SHOW GRANTS FOR CURRENT_USER()')->fetchAll(PDO::FETCH_COLUMN);
++
++            $hasGrant = false;
++            foreach ($grants as $grant) {
++                if (stripos($grant, 'GRANT OPTION') !== false || stripos($grant, 'ALL PRIVILEGES') !== false) {
++                    $hasGrant = true;
++                    break;
++                }
++            }
++
++            return [
++                'version' => $version ?: 'unknown',
++                'has_required_permissions' => $hasGrant,
++                'message' => $hasGrant
++                    ? 'Connection successful with required permissions.'
++                    : 'Connection successful but the user lacks GRANT OPTION privilege.',
++            ];
++        } catch (PDOException $e) {
++            return [
++                'version' => 'unknown',
++                'has_required_permissions' => false,
++                'message' => 'Connection failed: ' . $e->getMessage(),
++            ];
++        }
++    }
++
++    /**
++     * Configure the dynamic connection for the given host and execute a SQL statement.
++     *
++     * @param DatabaseHost $host The remote host to connect to
++     * @param string $statement The raw SQL statement to execute
++     */
++    private function runOnHost(DatabaseHost $host, string $statement): void
++    {
++        $this->dynamic->set('dynamic', $host);
++        $this->databaseManager->connection('dynamic')->statement($statement);
++    }
++
++    /**
++     * Quote a MySQL identifier (database name, username, host) with backticks,
++     * escaping any embedded backticks by doubling them.
++     */
++    private function quoteIdentifier(string $value): string
++    {
++        return '`' . str_replace('`', '``', $value) . '`';
++    }
++
++    /**
++     * Escape a string value for use inside a single-quoted SQL literal,
++     * handling backslashes and single quotes.
++     */
++    private function escapeLiteral(string $value): string
++    {
++        return str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
++    }
++}
+diff --git a/app/Services/Databases/Provisioners/ProvisionerFactory.php b/app/Services/Databases/Provisioners/ProvisionerFactory.php
+new file mode 100644
+index 000000000..76ca8ddcd
+--- /dev/null
++++ b/app/Services/Databases/Provisioners/ProvisionerFactory.php
+@@ -0,0 +1,51 @@
++<?php
++
++namespace Pterodactyl\Services\Databases\Provisioners;
++
++use InvalidArgumentException;
++use Illuminate\Contracts\Container\Container;
++use Pterodactyl\Models\DatabaseHost;
++use Pterodactyl\Contracts\Database\DatabaseProvisionerInterface;
++
++/**
++ * Resolves the correct database provisioner implementation for a given host.
++ *
++ * Uses the host's `driver` column to determine which provisioner to instantiate.
++ * Defaults to MySQL for hosts without an explicit driver (backwards compatibility).
++ */
++class ProvisionerFactory
++{
++    /** @var array<string, class-string<DatabaseProvisionerInterface>> */
++    private const DRIVER_MAP = [
++        'mysql' => MysqlProvisioner::class,
++        // 'pgsql' => PostgresProvisioner::class,  // Added in Phase 2
++    ];
++
++    public function __construct(
++        private Container $container,
++    ) {}
++
++    /**
++     * Resolve a provisioner instance for the given database host.
++     *
++     * Falls back to 'mysql' when the host has no explicit driver set,
++     * maintaining backwards compatibility with existing database hosts
++     * that predate the multi-driver feature.
++     *
++     * @param DatabaseHost $host The host whose driver determines the provisioner
++     *
++     * @return DatabaseProvisionerInterface
++     *
++     * @throws InvalidArgumentException If the host's driver is not supported
++     */
++    public function forHost(DatabaseHost $host): DatabaseProvisionerInterface
++    {
++        $driver = $host->driver ?? 'mysql';
++
++        if (!isset(self::DRIVER_MAP[$driver])) {
++            throw new InvalidArgumentException("Unsupported database driver: {$driver}");
++        }
++
++        return $this->container->make(self::DRIVER_MAP[$driver]);
++    }
++}
+diff --git a/tests/Unit/Services/Databases/Provisioners/MysqlProvisionerTest.php b/tests/Unit/Services/Databases/Provisioners/MysqlProvisionerTest.php
+new file mode 100644
+index 000000000..1dbb35ed3
+--- /dev/null
++++ b/tests/Unit/Services/Databases/Provisioners/MysqlProvisionerTest.php
+@@ -0,0 +1,318 @@
++<?php
++
++namespace Pterodactyl\Tests\Unit\Services\Databases\Provisioners;
++
++use Mockery;
++use Mockery\MockInterface;
++use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
++use Pterodactyl\Tests\TestCase;
++use Illuminate\Database\DatabaseManager;
++use Illuminate\Database\Connection;
++use Illuminate\Contracts\Encryption\Encrypter;
++use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Services\Databases\Provisioners\MysqlProvisioner;
++
++/**
++ * Verifies that MysqlProvisioner generates correct MySQL SQL statements
++ * for each provisioning operation and routes them through the dynamic
++ * database connection.
++ */
++class MysqlProvisionerTest extends TestCase
++{
++    private MockInterface $databaseManager;
++    private MockInterface $dynamic;
++    private MockInterface $encrypter;
++    private MockInterface $connection;
++    private MysqlProvisioner $provisioner;
++
++    public function setUp(): void
++    {
++        parent::setUp();
++
++        $this->databaseManager = Mockery::mock(DatabaseManager::class);
++        $this->dynamic = Mockery::mock(DynamicDatabaseConnection::class);
++        $this->encrypter = Mockery::mock(Encrypter::class);
++        $this->connection = Mockery::mock(Connection::class);
++
++        $this->provisioner = new MysqlProvisioner(
++            $this->databaseManager,
++            $this->dynamic,
++            $this->encrypter,
++        );
++    }
++
++    /**
++     * Verify that createDatabase issues a CREATE DATABASE IF NOT EXISTS statement.
++     */
++    public function testCreateDatabase(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement('CREATE DATABASE IF NOT EXISTS `s1_testdb`');
++
++        $this->provisioner->createDatabase($database, $host);
++    }
++
++    /**
++     * Verify that createUser decrypts the password and issues a CREATE USER statement.
++     */
++    public function testCreateUser(): void
++    {
++        $database = $this->makeDatabase([
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++            'password' => 'encrypted_password',
++            'max_connections' => null,
++        ]);
++        $host = $this->makeHost();
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('plain_password');
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement("CREATE USER `u1_abcdefghij`@`%` IDENTIFIED BY 'plain_password'");
++
++        $this->provisioner->createUser($database, $host);
++    }
++
++    /**
++     * Verify that createUser appends MAX_USER_CONNECTIONS when a limit is set.
++     */
++    public function testCreateUserWithMaxConnections(): void
++    {
++        $database = $this->makeDatabase([
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++            'password' => 'encrypted_password',
++            'max_connections' => 10,
++        ]);
++        $host = $this->makeHost();
++
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('encrypted_password')
++            ->andReturn('plain_password');
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement("CREATE USER `u1_abcdefghij`@`%` IDENTIFIED BY 'plain_password' WITH MAX_USER_CONNECTIONS 10");
++
++        $this->provisioner->createUser($database, $host);
++    }
++
++    /**
++     * Verify that assignUserToDatabase issues a GRANT and FLUSH PRIVILEGES.
++     */
++    public function testAssignUserToDatabase(): void
++    {
++        $database = $this->makeDatabase([
++            'database' => 's1_testdb',
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++        ]);
++        $host = $this->makeHost();
++
++        $expectedGrant = 'GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, '
++            . 'REFERENCES, INDEX, LOCK TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, '
++            . 'CREATE TEMPORARY TABLES, CREATE VIEW, SHOW VIEW, EVENT, TRIGGER'
++            . ' ON `s1_testdb`.* TO `u1_abcdefghij`@`%`';
++
++        $this->expectDynamicSet($host, 2);
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with($expectedGrant)
++            ->andReturn(true);
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('FLUSH PRIVILEGES')
++            ->andReturn(true);
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->times(2)
++            ->andReturn($this->connection);
++
++        $this->provisioner->assignUserToDatabase($database, $host);
++    }
++
++    /**
++     * Verify that dropDatabase issues a DROP DATABASE IF EXISTS statement.
++     */
++    public function testDropDatabase(): void
++    {
++        $database = $this->makeDatabase(['database' => 's1_testdb']);
++        $host = $this->makeHost();
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement('DROP DATABASE IF EXISTS `s1_testdb`');
++
++        $this->provisioner->dropDatabase($database, $host);
++    }
++
++    /**
++     * Verify that dropUser issues a DROP USER IF EXISTS statement.
++     */
++    public function testDropUser(): void
++    {
++        $database = $this->makeDatabase([
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++        ]);
++        $host = $this->makeHost();
++
++        $this->expectDynamicSet($host);
++        $this->expectStatement('DROP USER IF EXISTS `u1_abcdefghij`@`%`');
++
++        $this->provisioner->dropUser($database, $host);
++    }
++
++    /**
++     * Verify that rotatePassword drops the user, recreates with the new password,
++     * grants permissions, and flushes privileges.
++     */
++    public function testRotatePassword(): void
++    {
++        $database = $this->makeDatabase([
++            'database' => 's1_testdb',
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++            'password' => 'old_encrypted',
++            'max_connections' => null,
++        ]);
++        $host = $this->makeHost();
++
++        // rotatePassword: dropUser -> createUser (with new encrypted pw) -> assignUserToDatabase (grant + flush)
++        // Total dynamic->set calls: 4 (drop, create, grant, flush)
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->times(4);
++
++        // dropUser statement
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('DROP USER IF EXISTS `u1_abcdefghij`@`%`')
++            ->andReturn(true);
++
++        // encrypter->encrypt for the temp database in rotatePassword
++        $this->encrypter->shouldReceive('encrypt')
++            ->once()
++            ->with('new_plain_password')
++            ->andReturn('new_encrypted');
++
++        // encrypter->decrypt for createUser
++        $this->encrypter->shouldReceive('decrypt')
++            ->once()
++            ->with('new_encrypted')
++            ->andReturn('new_plain_password');
++
++        // createUser statement
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with("CREATE USER `u1_abcdefghij`@`%` IDENTIFIED BY 'new_plain_password'")
++            ->andReturn(true);
++
++        // GRANT statement
++        $expectedGrant = 'GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, '
++            . 'REFERENCES, INDEX, LOCK TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, '
++            . 'CREATE TEMPORARY TABLES, CREATE VIEW, SHOW VIEW, EVENT, TRIGGER'
++            . ' ON `s1_testdb`.* TO `u1_abcdefghij`@`%`';
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with($expectedGrant)
++            ->andReturn(true);
++
++        // FLUSH PRIVILEGES
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with('FLUSH PRIVILEGES')
++            ->andReturn(true);
++
++        $this->databaseManager->shouldReceive('connection')
++            ->with('dynamic')
++            ->times(4)
++            ->andReturn($this->connection);
++
++        $this->provisioner->rotatePassword($database, $host, 'new_plain_password');
++    }
++
++    /**
++     * Create a Database model instance populated with the given attributes.
++     *
++     * @param array<string, mixed> $attributes
++     */
++    private function makeDatabase(array $attributes = []): Database
++    {
++        $database = new Database();
++        $database->forceFill(array_merge([
++            'id' => 1,
++            'server_id' => 1,
++            'database_host_id' => 1,
++            'database' => 's1_testdb',
++            'username' => 'u1_abcdefghij',
++            'remote' => '%',
++            'password' => 'encrypted_password',
++            'max_connections' => null,
++        ], $attributes));
++
++        return $database;
++    }
++
++    /**
++     * Create a DatabaseHost model instance populated with default attributes.
++     *
++     * @param array<string, mixed> $attributes
++     */
++    private function makeHost(array $attributes = []): DatabaseHost
++    {
++        $host = new DatabaseHost();
++        $host->forceFill(array_merge([
++            'id' => 1,
++            'name' => 'Test Host',
++            'host' => '127.0.0.1',
++            'port' => 3306,
++            'username' => 'admin',
++            'password' => 'encrypted_host_password',
++            'max_databases' => 10,
++        ], $attributes));
++
++        return $host;
++    }
++
++    /**
++     * Set up the expectation that DynamicDatabaseConnection::set() is called
++     * for the given host.
++     *
++     * @param DatabaseHost $host The expected host argument
++     * @param int $times The number of times the call is expected (default: 1)
++     */
++    private function expectDynamicSet(DatabaseHost $host, int $times = 1): void
++    {
++        $this->dynamic->shouldReceive('set')
++            ->with('dynamic', $host)
++            ->times($times);
++    }
++
++    /**
++     * Set up the expectation that a single SQL statement is executed via the
++     * dynamic database connection.
++     *
++     * @param string $statement The expected SQL statement
++     */
++    private function expectStatement(string $statement): void
++    {
++        $this->databaseManager->shouldReceive('connection')
++            ->once()
++            ->with('dynamic')
++            ->andReturn($this->connection);
++
++        $this->connection->shouldReceive('statement')
++            ->once()
++            ->with($statement)
++            ->andReturn(true);
++    }
++}
+diff --git a/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php b/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php
+new file mode 100644
+index 000000000..e196e8b95
+--- /dev/null
++++ b/tests/Unit/Services/Databases/Provisioners/ProvisionerFactoryTest.php
+@@ -0,0 +1,78 @@
++<?php
++
++namespace Pterodactyl\Tests\Unit\Services\Databases\Provisioners;
++
++use InvalidArgumentException;
++use Pterodactyl\Models\DatabaseHost;
++use Pterodactyl\Tests\TestCase;
++use Pterodactyl\Services\Databases\Provisioners\MysqlProvisioner;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
++
++/**
++ * Verifies that ProvisionerFactory correctly resolves provisioner
++ * implementations based on the DatabaseHost's driver attribute.
++ */
++class ProvisionerFactoryTest extends TestCase
++{
++    /**
++     * Verify that a host with driver='mysql' resolves to MysqlProvisioner.
++     */
++    public function testReturnsMysqlProvisionerForMysqlDriver(): void
++    {
++        $factory = $this->app->make(ProvisionerFactory::class);
++        $host = $this->makeHost(['driver' => 'mysql']);
++
++        $provisioner = $factory->forHost($host);
++
++        $this->assertInstanceOf(MysqlProvisioner::class, $provisioner);
++    }
++
++    /**
++     * Verify that a host with no driver set defaults to MysqlProvisioner.
++     */
++    public function testDefaultsToMysqlWhenDriverIsNull(): void
++    {
++        $factory = $this->app->make(ProvisionerFactory::class);
++        $host = $this->makeHost();
++        // Ensure the driver property is not set (null via dynamic access).
++
++        $provisioner = $factory->forHost($host);
++
++        $this->assertInstanceOf(MysqlProvisioner::class, $provisioner);
++    }
++
++    /**
++     * Verify that an unsupported driver throws an InvalidArgumentException.
++     */
++    public function testThrowsForUnsupportedDriver(): void
++    {
++        $factory = $this->app->make(ProvisionerFactory::class);
++        $host = $this->makeHost(['driver' => 'sqlite']);
++
++        $this->expectException(InvalidArgumentException::class);
++        $this->expectExceptionMessage('Unsupported database driver: sqlite');
++
++        $factory->forHost($host);
++    }
++
++    /**
++     * Create a DatabaseHost model instance populated with default attributes.
++     *
++     * @param array<string, mixed> $attributes
++     */
++    private function makeHost(array $attributes = []): DatabaseHost
++    {
++        $host = new DatabaseHost();
++        $host->forceFill(array_merge([
++            'id' => 1,
++            'name' => 'Test Host',
++            'host' => '127.0.0.1',
++            'port' => 3306,
++            'username' => 'admin',
++            'password' => 'encrypted_host_password',
++            'max_databases' => 10,
++        ], $attributes));
++
++        return $host;
++    }
++}
+-- 
+2.43.0
+

@@ -30,7 +30,118 @@
       "name": "Configuration",
       "description": "Configuration and environment changes",
       "risk_default": "low"
+    },
+    "branding": {
+      "name": "Branding",
+      "description": "Custom branding and visual identity",
+      "risk_default": "low"
+    },
+    "ci": {
+      "name": "CI/CD",
+      "description": "Continuous integration and deployment",
+      "risk_default": "low"
     }
   },
-  "patches": []
+  "patches": [
+    {
+      "id": "0001",
+      "title": "feat db hosts add DatabaseProvisionerInterface Mysql",
+      "file": "0001-feat-db-hosts-add-DatabaseProvisionerInterface-Mysql.patch",
+      "category": "database",
+      "description": "Extract MySQL provisioning SQL into MysqlProvisioner behind a strategy interface (DatabaseProvisionerInterface) with ProvisionerFactory for driver resolution. Includes safe identifier quoting and literal escaping helpers.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0002",
+      "title": "refactor db hosts rewire services to use Provisioner",
+      "file": "0002-refactor-db-hosts-rewire-services-to-use-Provisioner.patch",
+      "category": "database",
+      "description": "Rewire DatabaseManagementService, DatabasePasswordService, HostCreationService, and HostUpdateService to use ProvisionerFactory instead of direct DatabaseRepository SQL. Enforces testConnection permission checks before persisting host records.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0003",
+      "title": "fix db hosts driver aware testConnection remove cred",
+      "file": "0003-fix-db-hosts-driver-aware-testConnection-remove-cred.patch",
+      "category": "security",
+      "description": "Make Admin DatabaseController testConnection driver-aware with correct success/failure semantics, handle RuntimeException from permission checks, remove credential logging bug, and clean up DatabaseRepositoryInterface.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0004",
+      "title": "feat db hosts add driver column migration model upda",
+      "file": "0004-feat-db-hosts-add-driver-column-migration-model-upda.patch",
+      "category": "database",
+      "description": "Add driver column to database_hosts table (default mysql), update DatabaseHost model/factory, and make DynamicDatabaseConnection driver-aware with MySQL and PostgreSQL config profiles. Throws on unsupported driver values.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0005",
+      "title": "feat db hosts add PostgresProvisioner with external ",
+      "file": "0005-feat-db-hosts-add-PostgresProvisioner-with-external-.patch",
+      "category": "database",
+      "description": "PostgreSQL provisioner with role-based auth, schema-level grants, ALTER DEFAULT PRIVILEGES, safe identifier/literal quoting, SQLSTATE-based race condition handling, and external transaction support. Includes orphaned model cleanup on partial failure.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0006",
+      "title": "feat db hosts wire driver through API validators tra",
+      "file": "0006-feat-db-hosts-wire-driver-through-API-validators-tra.patch",
+      "category": "api",
+      "description": "Wire driver field through API transformers, make remote field optional for PostgreSQL hosts, update DeployServerDatabaseService and request validators for multi-driver support.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "medium"
+    },
+    {
+      "id": "0007",
+      "title": "feat db hosts add driver aware React frontend for da",
+      "file": "0007-feat-db-hosts-add-driver-aware-React-frontend-for-da.patch",
+      "category": "ui",
+      "description": "Add driver field to ServerDatabase interface, driver-aware JDBC connection strings (mysql/postgresql), conditional Connections From display, and driver badges in the client UI.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "low"
+    },
+    {
+      "id": "0008",
+      "title": "feat db hosts update Blade templates for multi drive",
+      "file": "0008-feat-db-hosts-update-Blade-templates-for-multi-drive.patch",
+      "category": "ui",
+      "description": "Add driver dropdown to host creation modal, driver badges in admin tables, auto-port switching, driver-aware permission help text, and XSS-safe test connection feedback in Blade templates.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "low"
+    },
+    {
+      "id": "0009",
+      "title": "feat docker add workflow for building and publishing",
+      "file": "0009-feat-docker-add-workflow-for-building-and-publishing.patch",
+      "category": "ci",
+      "description": "Add GitHub Actions workflow for building and publishing Docker images.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "low"
+    },
+    {
+      "id": "0010",
+      "title": "feat branding update branding elements",
+      "file": "0010-feat-branding-update-branding-elements.patch",
+      "category": "branding",
+      "description": "Replace default Pyrodactyl branding with custom favicons, app icons, and logo component.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "low"
+    }
+  ]
 }

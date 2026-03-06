@@ -1,0 +1,298 @@
+From 3c24697c5a724af7ef7a083b428556d88b3bfbb4 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:26:57 +1000
+Subject: [PATCH 03/10] fix(db-hosts): driver-aware testConnection, remove
+ credential logging, clean up repository
+
+
+diff --git a/app/Contracts/Repository/DatabaseRepositoryInterface.php b/app/Contracts/Repository/DatabaseRepositoryInterface.php
+index befc2ce4d..25bb08165 100644
+--- a/app/Contracts/Repository/DatabaseRepositoryInterface.php
++++ b/app/Contracts/Repository/DatabaseRepositoryInterface.php
+@@ -5,6 +5,12 @@ namespace Pterodactyl\Contracts\Repository;
+ use Illuminate\Support\Collection;
+ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+ 
++/**
++ * Repository interface for Database model Eloquent queries.
++ *
++ * Provisioning SQL (CREATE/DROP/GRANT) is handled by DatabaseProvisionerInterface.
++ * This repository handles only Eloquent queries against the panel's own database.
++ */
+ interface DatabaseRepositoryInterface extends RepositoryInterface
+ {
+     public const DEFAULT_CONNECTION_NAME = 'dynamic';
+@@ -28,34 +34,4 @@ interface DatabaseRepositoryInterface extends RepositoryInterface
+      * Return all the databases for a given host with the server relationship loaded.
+      */
+     public function getDatabasesForHost(int $host, int $count = 25): LengthAwarePaginator;
+-
+-    /**
+-     * Create a new database on a given connection.
+-     */
+-    public function createDatabase(string $database): bool;
+-
+-    /**
+-     * Create a new database user on a given connection.
+-     */
+-    public function createUser(string $username, string $remote, string $password, ?int $max_connections): bool;
+-
+-    /**
+-     * Give a specific user access to a given database.
+-     */
+-    public function assignUserToDatabase(string $database, string $username, string $remote): bool;
+-
+-    /**
+-     * Flush the privileges for a given connection.
+-     */
+-    public function flush(): bool;
+-
+-    /**
+-     * Drop a given database on a specific connection.
+-     */
+-    public function dropDatabase(string $database): bool;
+-
+-    /**
+-     * Drop a given user on a specific connection.
+-     */
+-    public function dropUser(string $username, string $remote): bool;
+ }
+diff --git a/app/Http/Controllers/Admin/DatabaseController.php b/app/Http/Controllers/Admin/DatabaseController.php
+index 67ed1bd68..bbc312ca0 100644
+--- a/app/Http/Controllers/Admin/DatabaseController.php
++++ b/app/Http/Controllers/Admin/DatabaseController.php
+@@ -11,14 +11,12 @@ use Illuminate\View\Factory as ViewFactory;
+ use Pterodactyl\Http\Controllers\Controller;
+ use Illuminate\Http\Request;
+ use Illuminate\Http\JsonResponse;
+-use Illuminate\Support\Facades\Log;
+-
+-use PDO;
+-use PDOException;
++use Illuminate\Contracts\Encryption\Encrypter;
+ use Pterodactyl\Services\Databases\Hosts\HostUpdateService;
+ use Pterodactyl\Http\Requests\Admin\DatabaseHostFormRequest;
+ use Pterodactyl\Services\Databases\Hosts\HostCreationService;
+ use Pterodactyl\Services\Databases\Hosts\HostDeletionService;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Contracts\Repository\DatabaseRepositoryInterface;
+ use Pterodactyl\Contracts\Repository\LocationRepositoryInterface;
+ use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
+@@ -74,7 +72,7 @@ class DatabaseController extends Controller
+         try {
+             $host = $this->creationService->handle($request->normalize());
+         } catch (\Exception $exception) {
+-            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException) {
++            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException || $exception instanceof \RuntimeException) {
+                 $this->alert->danger(
+                     sprintf('There was an error while trying to connect to the host or while executing a query: "%s"', $exception->getMessage())
+                 )->flash();
+@@ -105,7 +103,7 @@ class DatabaseController extends Controller
+         } catch (\Exception $exception) {
+             // Catch any SQL related exceptions and display them back to the user, otherwise just
+             // throw the exception like normal and move on with it.
+-            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException) {
++            if ($exception instanceof \PDOException || $exception->getPrevious() instanceof \PDOException || $exception instanceof \RuntimeException) {
+                 $this->alert->danger(
+                     sprintf('There was an error while trying to connect to the host or while executing a query: "%s"', $exception->getMessage())
+                 )->flash();
+@@ -135,6 +133,10 @@ class DatabaseController extends Controller
+     /**
+      * Test database connection credentials.
+      *
++     * Delegates to the appropriate driver-specific provisioner to verify
++     * connectivity and check that the admin user has sufficient privileges
++     * for database provisioning operations.
++     *
+      * @throws \Illuminate\Validation\ValidationException
+      */
+     public function testConnection(Request $request): JsonResponse
+@@ -144,56 +146,39 @@ class DatabaseController extends Controller
+             'port' => 'required|integer|min:1|max:65535',
+             'username' => 'required|string',
+             'password' => 'required|string',
+-        ]);
+-        Log::error("TestConnection", [
+-            "\nhost" => $request->host,
+-            "\nport" => $request->port,
+-            "\nusername" => $request->username,
+-            "\npassword" => $request->password
++            'driver' => 'required|string|in:mysql,pgsql',
+         ]);
+ 
+         try {
+-            $dsn = "mysql:host={$request->input('host')};port={$request->input('port')};charset=utf8";
+-
+-            $pdo = new PDO($dsn, $request->input('username'), $request->input('password'), [
+-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+-                PDO::ATTR_TIMEOUT => 5, // 5 second timeout
++            // Build a temporary host model for the provisioner
++            $host = new DatabaseHost();
++            $host->forceFill([
++                'host' => $request->input('host'),
++                'port' => $request->input('port'),
++                'username' => $request->input('username'),
++                'password' => app(Encrypter::class)->encrypt($request->input('password')),
++                'driver' => $request->input('driver'),
+             ]);
+ 
+-            // Test basic query
+-            $version = $pdo->query('SELECT VERSION() as version')->fetchColumn();
+-
+-            // Test GRANT permissions (this is what Pterodactyl needs)
+-            $grants = $pdo->query('SHOW GRANTS FOR CURRENT_USER()')->fetchAll(PDO::FETCH_COLUMN);
+-
+-            $hasGrantOption = false;
+-            foreach ($grants as $grant) {
+-                if (stripos($grant, 'GRANT OPTION') !== false) {
+-                    $hasGrantOption = true;
+-                    break;
+-                }
+-            }
+-
+-            $message = "Successfully connected to MySQL server (Version: {$version}).";
+-            if (!$hasGrantOption) {
+-                $message .= " Warning: The user appears to lack GRANT OPTION permission which is required for creating databases and users.";
+-            }
++            $factory = app(ProvisionerFactory::class);
++            $provisioner = $factory->forHost($host);
++            $result = $provisioner->testConnection($host);
+ 
+             return response()->json([
+-                'success' => true,
+-                'message' => $message,
+-                'version' => $version,
+-                'has_grant_option' => $hasGrantOption
+-            ]);
+-        } catch (PDOException $e) {
++                'success' => $result['has_required_permissions'],
++                'message' => $result['message'],
++                'version' => $result['version'],
++                'has_required_permissions' => $result['has_required_permissions'],
++            ], $result['has_required_permissions'] ? 200 : 422);
++        } catch (\PDOException $e) {
+             return response()->json([
+                 'success' => false,
+-                'message' => 'Connection failed: ' . $e->getMessage()
++                'message' => 'Connection failed: ' . $e->getMessage(),
+             ], 422);
+         } catch (\Exception $e) {
+             return response()->json([
+                 'success' => false,
+-                'message' => 'Error: ' . $e->getMessage()
++                'message' => 'Error: ' . $e->getMessage(),
+             ], 422);
+         }
+     }
+diff --git a/app/Repositories/Eloquent/DatabaseRepository.php b/app/Repositories/Eloquent/DatabaseRepository.php
+index 9bc33d035..1f491b9bd 100644
+--- a/app/Repositories/Eloquent/DatabaseRepository.php
++++ b/app/Repositories/Eloquent/DatabaseRepository.php
+@@ -4,23 +4,20 @@ namespace Pterodactyl\Repositories\Eloquent;
+ 
+ use Pterodactyl\Models\Database;
+ use Illuminate\Support\Collection;
+-use Illuminate\Foundation\Application;
+-use Illuminate\Database\DatabaseManager;
+ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+ use Pterodactyl\Contracts\Repository\DatabaseRepositoryInterface;
+ 
++/**
++ * Eloquent repository for the Database model.
++ *
++ * Handles Eloquent queries against the panel's own database (listing, pagination).
++ * Provisioning SQL (CREATE/DROP/GRANT) is handled by DatabaseProvisionerInterface
++ * implementations via the ProvisionerFactory.
++ */
+ class DatabaseRepository extends EloquentRepository implements DatabaseRepositoryInterface
+ {
+     protected string $connection = self::DEFAULT_CONNECTION_NAME;
+ 
+-    /**
+-     * DatabaseRepository constructor.
+-     */
+-    public function __construct(Application $application, private DatabaseManager $database)
+-    {
+-        parent::__construct($application);
+-    }
+-
+     /**
+      * Return the model backing this repository.
+      */
+@@ -64,73 +61,4 @@ class DatabaseRepository extends EloquentRepository implements DatabaseRepositor
+             ->where('database_host_id', $host)
+             ->paginate($count, $this->getColumns());
+     }
+-
+-    /**
+-     * Create a new database on a given connection.
+-     */
+-    public function createDatabase(string $database): bool
+-    {
+-        return $this->run(sprintf('CREATE DATABASE IF NOT EXISTS `%s`', $database));
+-    }
+-
+-    /**
+-     * Create a new database user on a given connection.
+-     */
+-    public function createUser(string $username, string $remote, string $password, ?int $max_connections): bool
+-    {
+-        $args = [$username, $remote, $password];
+-        $command = 'CREATE USER `%s`@`%s` IDENTIFIED BY \'%s\'';
+-
+-        if (!empty($max_connections)) {
+-            $args[] = $max_connections;
+-            $command .= ' WITH MAX_USER_CONNECTIONS %s';
+-        }
+-
+-        return $this->run(sprintf($command, ...$args));
+-    }
+-
+-    /**
+-     * Give a specific user access to a given database.
+-     */
+-    public function assignUserToDatabase(string $database, string $username, string $remote): bool
+-    {
+-        return $this->run(sprintf(
+-            'GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, REFERENCES, INDEX, LOCK TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, CREATE TEMPORARY TABLES, CREATE VIEW, SHOW VIEW, EVENT, TRIGGER ON `%s`.* TO `%s`@`%s`',
+-            $database,
+-            $username,
+-            $remote
+-        ));
+-    }
+-
+-    /**
+-     * Flush the privileges for a given connection.
+-     */
+-    public function flush(): bool
+-    {
+-        return $this->run('FLUSH PRIVILEGES');
+-    }
+-
+-    /**
+-     * Drop a given database on a specific connection.
+-     */
+-    public function dropDatabase(string $database): bool
+-    {
+-        return $this->run(sprintf('DROP DATABASE IF EXISTS `%s`', $database));
+-    }
+-
+-    /**
+-     * Drop a given user on a specific connection.
+-     */
+-    public function dropUser(string $username, string $remote): bool
+-    {
+-        return $this->run(sprintf('DROP USER IF EXISTS `%s`@`%s`', $username, $remote));
+-    }
+-
+-    /**
+-     * Run the provided statement against the database on a given connection.
+-     */
+-    private function run(string $statement): bool
+-    {
+-        return $this->database->connection($this->getConnection())->statement($statement);
+-    }
+ }
+-- 
+2.43.0
+

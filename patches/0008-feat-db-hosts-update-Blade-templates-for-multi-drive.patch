@@ -1,0 +1,201 @@
+From 3eb20d71901f4de539657fa0f5e5ce375d512a79 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:51:22 +1000
+Subject: [PATCH 08/10] feat(db-hosts): update Blade templates for multi-driver
+ database hosts
+
+
+diff --git a/resources/views/admin/databases/index.blade.php b/resources/views/admin/databases/index.blade.php
+index e86ed7066..1096abbf8 100644
+--- a/resources/views/admin/databases/index.blade.php
++++ b/resources/views/admin/databases/index.blade.php
+@@ -28,6 +28,7 @@
+                         <tr>
+                             <th>ID</th>
+                             <th>Name</th>
++                            <th>Driver</th>
+                             <th>Host</th>
+                             <th>Port</th>
+                             <th>Username</th>
+@@ -38,6 +39,13 @@
+                             <tr>
+                                 <td><code>{{ $host->id }}</code></td>
+                                 <td><a href="{{ route('admin.databases.view', $host->id) }}">{{ $host->name }}</a></td>
++                                <td>
++                                    @if(($host->driver ?? 'mysql') === 'pgsql')
++                                        <span class="label label-info">PostgreSQL</span>
++                                    @else
++                                        <span class="label label-default">MySQL</span>
++                                    @endif
++                                </td>
+                                 <td><code>{{ $host->host }}</code></td>
+                                 <td><code>{{ $host->port }}</code></td>
+                                 <td>{{ $host->username }}</td>
+@@ -74,16 +82,23 @@
+                         <input type="text" name="name" id="pName" class="form-control" value="{{ old('name') }}" />
+                         <p class="text-muted small">A short identifier used to distinguish this location from others. Must be between 1 and 60 characters, for example, <code>us.nyc.lvl3</code>.</p>
+                     </div>
++                    <div class="form-group">
++                        <label for="pDriver" class="form-label">Driver</label>
++                        <select name="driver" id="pDriver" class="form-control">
++                            <option value="mysql" {{ old('driver', 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL / MariaDB</option>
++                            <option value="pgsql" {{ old('driver') === 'pgsql' ? 'selected' : '' }}>PostgreSQL</option>
++                        </select>
++                    </div>
+                     <div class="row">
+                         <div class="col-md-6">
+                             <label for="pHost" class="form-label">Host</label>
+                             <input type="text" name="host" id="pHost" class="form-control" value="{{ old('host') }}" />
+-                            <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this MySQL host <em>from the panel</em> to add new databases.</p>
++                            <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this database host <em>from the panel</em> to add new databases.</p>
+                         </div>
+                         <div class="col-md-6">
+                             <label for="pPort" class="form-label">Port</label>
+                             <input type="text" name="port" id="pPort" class="form-control" value="{{ old('port', '3306') }}"/>
+-                            <p class="text-muted small">The port that MySQL is running on for this host.</p>
++                            <p class="text-muted small">The port that the database server is running on for this host.</p>
+                         </div>
+                     </div>
+                     <div class="row">
+@@ -114,7 +129,7 @@
+                     </div>
+                 </div>
+                 <div class="modal-footer">
+-                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have the <code>WITH GRANT OPTION</code> permission. If the defined account does not have this permission requests to create databases <em>will</em> fail. <strong>Do not use the same account details for MySQL that you have defined for this panel.</strong></p>
++                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have sufficient permissions to create databases and manage users. For MySQL, the account needs the <code>WITH GRANT OPTION</code> privilege. For PostgreSQL, the account needs <code>CREATEDB</code> and <code>CREATEROLE</code> privileges (or superuser). <strong>Do not use the same account details that you have defined for this panel's database.</strong></p>
+                     {!! csrf_field() !!}
+                     <button type="button" class="btn btn-default btn-sm pull-left" data-dismiss="modal">Cancel</button>
+                     <button type="button" id="testDatabaseBtn" class="btn btn-primary btn-sm">Test Database</button>
+@@ -131,6 +146,13 @@
+     <script>
+         $('#pNodeId').select2();
+ 
++        $('#pDriver').on('change', function() {
++            var port = $(this).val() === 'pgsql' ? '5432' : '3306';
++            if ($('#pPort').val() === '3306' || $('#pPort').val() === '5432') {
++                $('#pPort').val(port);
++            }
++        });
++
+         // Test database connection
+         $('#testDatabaseBtn').on('click', function() {
+             const button = $(this);
+@@ -147,12 +169,13 @@
+                 port: $('#pPort').val(),
+                 username: $('#pUsername').val(),
+                 password: $('#pPassword').val(),
++                driver: $('#pDriver').val(),
+                 _token: '{{ csrf_token() }}'
+             };
+ 
+             // Validate required fields
+             if (!formData.host || !formData.port || !formData.username || !formData.password) {
+-                resultDiv.html('<strong>Error:</strong> Please fill in all required database connection fields.').addClass('alert alert-danger').show();
++                resultDiv.text('Error: Please fill in all required database connection fields.').addClass('alert alert-danger').show();
+                 button.prop('disabled', false).text(originalText);
+                 return;
+             }
+@@ -164,9 +187,9 @@
+                 data: formData,
+                 success: function(response) {
+                     if (response.success) {
+-                        resultDiv.html('<strong>Success:</strong> ' + response.message).addClass('alert alert-success').show();
++                        resultDiv.text('Success: ' + response.message).addClass('alert alert-success').show();
+                     } else {
+-                        resultDiv.html('<strong>Error:</strong> ' + response.message).addClass('alert alert-danger').show();
++                        resultDiv.text('Error: ' + response.message).addClass('alert alert-danger').show();
+                     }
+                 },
+                 error: function(xhr) {
+@@ -176,7 +199,7 @@
+                     } else if (xhr.statusText) {
+                         message = xhr.statusText;
+                     }
+-                    resultDiv.html('<strong>Error:</strong> ' + message).addClass('alert alert-danger').show();
++                    resultDiv.text('Error: ' + message).addClass('alert alert-danger').show();
+                 },
+                 complete: function() {
+                     button.prop('disabled', false).text(originalText);
+diff --git a/resources/views/admin/databases/view.blade.php b/resources/views/admin/databases/view.blade.php
+index e105751a0..88669e72a 100644
+--- a/resources/views/admin/databases/view.blade.php
++++ b/resources/views/admin/databases/view.blade.php
+@@ -26,15 +26,20 @@
+                         <label for="pName" class="form-label">Name</label>
+                         <input type="text" id="pName" name="name" class="form-control" value="{{ old('name', $host->name) }}" />
+                     </div>
++                    <div class="form-group">
++                        <label class="form-label">Driver</label>
++                        <input type="text" class="form-control" value="{{ ($host->driver ?? 'mysql') === 'pgsql' ? 'PostgreSQL' : 'MySQL / MariaDB' }}" readonly disabled />
++                        <p class="text-muted small">The database engine cannot be changed after creation.</p>
++                    </div>
+                     <div class="form-group">
+                         <label for="pHost" class="form-label">Host</label>
+                         <input type="text" id="pHost" name="host" class="form-control" value="{{ old('host', $host->host) }}" />
+-                        <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this MySQL host <em>from the panel</em> to add new databases.</p>
++                        <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this database host <em>from the panel</em> to add new databases.</p>
+                     </div>
+                     <div class="form-group">
+                         <label for="pPort" class="form-label">Port</label>
+                         <input type="text" id="pPort" name="port" class="form-control" value="{{ old('port', $host->port) }}" />
+-                        <p class="text-muted small">The port that MySQL is running on for this host.</p>
++                        <p class="text-muted small">The port that the database server is running on for this host.</p>
+                     </div>
+                     <div class="form-group">
+                         <label for="pNodeId" class="form-label">Linked Node</label>
+@@ -70,7 +75,7 @@
+                         <p class="text-muted small">The password to the account defined. Leave blank to continue using the assigned password.</p>
+                     </div>
+                     <hr />
+-                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have the <code>WITH GRANT OPTION</code> permission. If the defined account does not have this permission requests to create databases <em>will</em> fail. <strong>Do not use the same account details for MySQL that you have defined for this panel.</strong></p>
++                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have sufficient permissions to create databases and manage users. For MySQL, the account needs the <code>WITH GRANT OPTION</code> privilege. For PostgreSQL, the account needs <code>CREATEDB</code> and <code>CREATEROLE</code> privileges (or superuser). <strong>Do not use the same account details that you have defined for this panel's database.</strong></p>
+                 </div>
+                 <div class="box-footer">
+                     {!! csrf_field() !!}
+diff --git a/resources/views/admin/servers/view/database.blade.php b/resources/views/admin/servers/view/database.blade.php
+index 385ce0f3f..c5277c851 100644
+--- a/resources/views/admin/servers/view/database.blade.php
++++ b/resources/views/admin/servers/view/database.blade.php
+@@ -32,6 +32,7 @@
+                         <th>Username</th>
+                         <th>Connections From</th>
+                         <th>Host</th>
++                        <th>Driver</th>
+                         <th>Max Connections</th>
+                         <th></th>
+                     </tr>
+@@ -41,6 +42,13 @@
+                             <td>{{ $database->username }}</td>
+                             <td>{{ $database->remote }}</td>
+                             <td><code>{{ $database->host->host }}:{{ $database->host->port }}</code></td>
++                            <td>
++                                @if(($database->host->driver ?? 'mysql') === 'pgsql')
++                                    <span class="label label-info">PG</span>
++                                @else
++                                    <span class="label label-default">MySQL</span>
++                                @endif
++                            </td>
+                             @if($database->max_connections != null)
+                                 <td>{{ $database->max_connections }}</td>
+                             @else
+@@ -67,7 +75,7 @@
+                         <label for="pDatabaseHostId" class="control-label">Database Host</label>
+                         <select id="pDatabaseHostId" name="database_host_id" class="form-control">
+                             @foreach($hosts as $host)
+-                                <option value="{{ $host->id }}">{{ $host->name }}</option>
++                                <option value="{{ $host->id }}">{{ $host->name }} ({{ ($host->driver ?? 'mysql') === 'pgsql' ? 'PostgreSQL' : 'MySQL' }})</option>
+                             @endforeach
+                         </select>
+                         <p class="text-muted small">Select the host database server that this database should be created on.</p>
+@@ -82,7 +90,7 @@
+                     <div class="form-group">
+                         <label for="pRemote" class="control-label">Connections</label>
+                         <input id="pRemote" type="text" name="remote" class="form-control" value="%" />
+-                        <p class="text-muted small">This should reflect the IP address that connections are allowed from. Uses standard MySQL notation. If unsure leave as <code>%</code>.</p>
++                        <p class="text-muted small">This should reflect the IP address that connections are allowed from. Uses standard MySQL notation. For PostgreSQL hosts this field is ignored. If unsure leave as <code>%</code>.</p>
+                     </div>
+                     <div class="form-group">
+                         <label for="pmax_connections" class="control-label">Concurrent Connections</label>
+-- 
+2.43.0
+

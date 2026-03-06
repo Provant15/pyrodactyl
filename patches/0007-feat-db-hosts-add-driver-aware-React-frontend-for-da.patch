@@ -1,0 +1,109 @@
+From e6ff0b963c8d38d7dc6469c469d4b39ce4457bb2 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:49:57 +1000
+Subject: [PATCH 07/10] feat(db-hosts): add driver-aware React frontend for
+ database management
+
+
+diff --git a/resources/scripts/api/server/databases/getServerDatabases.ts b/resources/scripts/api/server/databases/getServerDatabases.ts
+index a819858bb..f6a310e7b 100644
+--- a/resources/scripts/api/server/databases/getServerDatabases.ts
++++ b/resources/scripts/api/server/databases/getServerDatabases.ts
+@@ -7,6 +7,7 @@ export interface ServerDatabase {
+     username: string;
+     connectionString: string;
+     allowConnectionsFrom: string;
++    driver: string;
+     password?: string;
+ }
+ 
+@@ -16,6 +17,7 @@ export const rawDataToServerDatabase = (data: any): ServerDatabase => ({
+     username: data.username,
+     connectionString: `${data.host.address}:${data.host.port}`,
+     allowConnectionsFrom: data.connections_from,
++    driver: data.host.driver || 'mysql',
+     password: data.relationships.password?.attributes?.password,
+ });
+ 
+diff --git a/resources/scripts/components/server/databases/DatabaseRow.tsx b/resources/scripts/components/server/databases/DatabaseRow.tsx
+index a1cc32320..a980cd156 100644
+--- a/resources/scripts/components/server/databases/DatabaseRow.tsx
++++ b/resources/scripts/components/server/databases/DatabaseRow.tsx
+@@ -43,7 +43,8 @@ const DatabaseRow = ({ database }: Props) => {
+     const appendDatabase = ServerContext.useStoreActions((actions) => actions.databases.appendDatabase);
+     const removeDatabase = ServerContext.useStoreActions((actions) => actions.databases.removeDatabase);
+ 
+-    const jdbcConnectionString = `jdbc:mysql://${database.username}${database.password ? `:${encodeURIComponent(database.password)}` : ''}@${database.connectionString}/${database.name}`;
++    const jdbcPrefix = database.driver === 'pgsql' ? 'jdbc:postgresql' : 'jdbc:mysql';
++    const jdbcConnectionString = `${jdbcPrefix}://${database.username}${database.password ? `:${encodeURIComponent(database.password)}` : ''}@${database.connectionString}/${database.name}`;
+ 
+     const schema = object().shape({
+         confirm: string()
+@@ -129,12 +130,14 @@ const DatabaseRow = ({ database }: Props) => {
+                                 <Input type={'text'} readOnly value={database.connectionString} />
+                             </CopyOnClick>
+                         </div>
+-                        <div className='flex flex-col'>
+-                            <Label>Connections from</Label>
+-                            <CopyOnClick text={database.allowConnectionsFrom}>
+-                                <Input type={'text'} readOnly value={database.allowConnectionsFrom} />
+-                            </CopyOnClick>
+-                        </div>
++                        {database.driver !== 'pgsql' && (
++                            <div className='flex flex-col'>
++                                <Label>Connections from</Label>
++                                <CopyOnClick text={database.allowConnectionsFrom}>
++                                    <Input type={'text'} readOnly value={database.allowConnectionsFrom} />
++                                </CopyOnClick>
++                            </div>
++                        )}
+                         <div className='flex flex-col'>
+                             <Label>Username</Label>
+                             <CopyOnClick text={database.username}>
+@@ -182,6 +185,9 @@ const DatabaseRow = ({ database }: Props) => {
+                                 <CopyOnClick text={database.name}>
+                                     <h3 className='text-base font-medium text-zinc-100 truncate'>{database.name}</h3>
+                                 </CopyOnClick>
++                                <span className='text-xs px-1.5 py-0.5 rounded bg-[#ffffff11] text-zinc-400 uppercase tracking-wider flex-shrink-0'>
++                                    {database.driver === 'pgsql' ? 'PG' : 'MySQL'}
++                                </span>
+                             </div>
+                         </div>
+ 
+@@ -192,12 +198,14 @@ const DatabaseRow = ({ database }: Props) => {
+                                     <p className='text-zinc-300 font-mono truncate'>{database.connectionString}</p>
+                                 </CopyOnClick>
+                             </div>
+-                            <div>
+-                                <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>From</p>
+-                                <CopyOnClick text={database.allowConnectionsFrom}>
+-                                    <p className='text-zinc-300 font-mono truncate'>{database.allowConnectionsFrom}</p>
+-                                </CopyOnClick>
+-                            </div>
++                            {database.driver !== 'pgsql' && (
++                                <div>
++                                    <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>From</p>
++                                    <CopyOnClick text={database.allowConnectionsFrom}>
++                                        <p className='text-zinc-300 font-mono truncate'>{database.allowConnectionsFrom}</p>
++                                    </CopyOnClick>
++                                </div>
++                            )}
+                             <div>
+                                 <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>Username</p>
+                                 <CopyOnClick text={database.username}>
+diff --git a/resources/scripts/components/server/databases/DatabasesContainer.tsx b/resources/scripts/components/server/databases/DatabasesContainer.tsx
+index 33067a8ce..55ead67b0 100644
+--- a/resources/scripts/components/server/databases/DatabasesContainer.tsx
++++ b/resources/scripts/components/server/databases/DatabasesContainer.tsx
+@@ -115,7 +115,7 @@ const DatabasesContainer = () => {
+                 }
+             >
+                 <p className='text-sm text-neutral-400 leading-relaxed'>
+-                    Create and manage MySQL databases for your server. Configure database access, manage users, and view
++                    Create and manage databases for your server. Configure database access, manage users, and view
+                     connection details.
+                 </p>
+             </MainPageHeader>
+-- 
+2.43.0
+

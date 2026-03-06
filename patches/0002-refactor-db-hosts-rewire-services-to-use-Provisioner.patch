@@ -1,0 +1,348 @@
+From 5ac52a5b8dfcae26a4a75528859b0f048f46264b Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 19:23:03 +1000
+Subject: [PATCH 02/10] refactor(db-hosts): rewire services to use
+ ProvisionerFactory
+
+
+diff --git a/app/Services/Databases/DatabaseManagementService.php b/app/Services/Databases/DatabaseManagementService.php
+index 137cba0b0..9e263e8b4 100644
+--- a/app/Services/Databases/DatabaseManagementService.php
++++ b/app/Services/Databases/DatabaseManagementService.php
+@@ -5,11 +5,11 @@ namespace Pterodactyl\Services\Databases;
+ use Exception;
+ use Pterodactyl\Models\Server;
+ use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
+ use Pterodactyl\Helpers\Utilities;
+ use Illuminate\Database\ConnectionInterface;
+ use Illuminate\Contracts\Encryption\Encrypter;
+-use Pterodactyl\Extensions\DynamicDatabaseConnection;
+-use Pterodactyl\Repositories\Eloquent\DatabaseRepository;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Exceptions\Repository\DuplicateDatabaseNameException;
+ use Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException;
+ use Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException;
+@@ -34,9 +34,8 @@ class DatabaseManagementService
+ 
+     public function __construct(
+         protected ConnectionInterface $connection,
+-        protected DynamicDatabaseConnection $dynamic,
+         protected Encrypter $encrypter,
+-        protected DatabaseRepository $repository,
++        protected ProvisionerFactory $provisionerFactory,
+     ) {}
+ 
+     /**
+@@ -105,30 +104,25 @@ class DatabaseManagementService
+             return $this->connection->transaction(function () use ($data, &$database) {
+                 $database = $this->createModel($data);
+ 
+-                $this->dynamic->set('dynamic', $data['database_host_id']);
++                $host = DatabaseHost::findOrFail($data['database_host_id']);
++                $provisioner = $this->provisionerFactory->forHost($host);
+ 
+-                $this->repository->createDatabase($database->database);
+-                $this->repository->createUser(
+-                    $database->username,
+-                    $database->remote,
+-                    $this->encrypter->decrypt($database->password),
+-                    $database->max_connections
+-                );
+-                $this->repository->assignUserToDatabase($database->database, $database->username, $database->remote);
+-                $this->repository->flush();
++                $provisioner->createDatabase($database, $host);
++                $provisioner->createUser($database, $host);
++                $provisioner->assignUserToDatabase($database, $host);
+ 
+                 return $database;
+             });
+         } catch (\Exception $exception) {
+             try {
+                 if ($database instanceof Database) {
+-                    $this->repository->dropDatabase($database->database);
+-                    $this->repository->dropUser($database->username, $database->remote);
+-                    $this->repository->flush();
++                    $host = DatabaseHost::findOrFail($database->database_host_id);
++                    $provisioner = $this->provisionerFactory->forHost($host);
++                    $provisioner->dropDatabase($database, $host);
++                    $provisioner->dropUser($database, $host);
+                 }
+             } catch (\Exception $deletionException) {
+-                // Do nothing here. We've already encountered an issue before this point so no
+-                // reason to prioritize this error over the initial one.
++                // Swallow cleanup errors; original exception takes priority.
+             }
+ 
+             throw $exception;
+@@ -142,11 +136,11 @@ class DatabaseManagementService
+      */
+     public function delete(Database $database): ?bool
+     {
+-        $this->dynamic->set('dynamic', $database->database_host_id);
++        $host = DatabaseHost::findOrFail($database->database_host_id);
++        $provisioner = $this->provisionerFactory->forHost($host);
+ 
+-        $this->repository->dropDatabase($database->database);
+-        $this->repository->dropUser($database->username, $database->remote);
+-        $this->repository->flush();
++        $provisioner->dropDatabase($database, $host);
++        $provisioner->dropUser($database, $host);
+ 
+         return $database->delete();
+     }
+diff --git a/app/Services/Databases/DatabasePasswordService.php b/app/Services/Databases/DatabasePasswordService.php
+index 66c395df4..b3d2579a9 100644
+--- a/app/Services/Databases/DatabasePasswordService.php
++++ b/app/Services/Databases/DatabasePasswordService.php
+@@ -3,10 +3,11 @@
+ namespace Pterodactyl\Services\Databases;
+ 
+ use Pterodactyl\Models\Database;
++use Pterodactyl\Models\DatabaseHost;
+ use Pterodactyl\Helpers\Utilities;
+ use Illuminate\Database\ConnectionInterface;
+ use Illuminate\Contracts\Encryption\Encrypter;
+-use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Contracts\Repository\DatabaseRepositoryInterface;
+ 
+ class DatabasePasswordService
+@@ -16,8 +17,8 @@ class DatabasePasswordService
+      */
+     public function __construct(
+         private ConnectionInterface $connection,
+-        private DynamicDatabaseConnection $dynamic,
+         private Encrypter $encrypter,
++        private ProvisionerFactory $provisionerFactory,
+         private DatabaseRepositoryInterface $repository,
+     ) {
+     }
+@@ -32,16 +33,13 @@ class DatabasePasswordService
+         $password = Utilities::randomStringWithSpecialCharacters(24);
+ 
+         $this->connection->transaction(function () use ($database, $password) {
+-            $this->dynamic->set('dynamic', $database->database_host_id);
+-
+             $this->repository->withoutFreshModel()->update($database->id, [
+                 'password' => $this->encrypter->encrypt($password),
+             ]);
+ 
+-            $this->repository->dropUser($database->username, $database->remote);
+-            $this->repository->createUser($database->username, $database->remote, $password, $database->max_connections);
+-            $this->repository->assignUserToDatabase($database->database, $database->username, $database->remote);
+-            $this->repository->flush();
++            $host = DatabaseHost::findOrFail($database->database_host_id);
++            $provisioner = $this->provisionerFactory->forHost($host);
++            $provisioner->rotatePassword($database, $host, $password);
+         });
+ 
+         return $password;
+diff --git a/app/Services/Databases/Hosts/HostCreationService.php b/app/Services/Databases/Hosts/HostCreationService.php
+index 0eecd7971..871e259c1 100644
+--- a/app/Services/Databases/Hosts/HostCreationService.php
++++ b/app/Services/Databases/Hosts/HostCreationService.php
+@@ -3,10 +3,9 @@
+ namespace Pterodactyl\Services\Databases\Hosts;
+ 
+ use Pterodactyl\Models\DatabaseHost;
+-use Illuminate\Database\DatabaseManager;
+ use Illuminate\Database\ConnectionInterface;
+ use Illuminate\Contracts\Encryption\Encrypter;
+-use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
+ 
+ class HostCreationService
+@@ -16,9 +15,8 @@ class HostCreationService
+      */
+     public function __construct(
+         private ConnectionInterface $connection,
+-        private DatabaseManager $databaseManager,
+-        private DynamicDatabaseConnection $dynamic,
+         private Encrypter $encrypter,
++        private ProvisionerFactory $provisionerFactory,
+         private DatabaseHostRepositoryInterface $repository,
+     ) {
+     }
+@@ -39,11 +37,16 @@ class HostCreationService
+                 'username' => array_get($data, 'username'),
+                 'max_databases' => null,
+                 'node_id' => array_get($data, 'node_id'),
++                'driver' => array_get($data, 'driver', 'mysql'),
+             ]);
+ 
+             // Confirm access using the provided credentials before saving data.
+-            $this->dynamic->set('dynamic', $host);
+-            $this->databaseManager->connection('dynamic')->select('SELECT 1 FROM dual');
++            $provisioner = $this->provisionerFactory->forHost($host);
++            $result = $provisioner->testConnection($host);
++
++            if (!$result['has_required_permissions']) {
++                throw new \RuntimeException($result['message']);
++            }
+ 
+             return $host;
+         });
+diff --git a/app/Services/Databases/Hosts/HostUpdateService.php b/app/Services/Databases/Hosts/HostUpdateService.php
+index e2efd46fc..8ff6e4f20 100644
+--- a/app/Services/Databases/Hosts/HostUpdateService.php
++++ b/app/Services/Databases/Hosts/HostUpdateService.php
+@@ -3,10 +3,9 @@
+ namespace Pterodactyl\Services\Databases\Hosts;
+ 
+ use Pterodactyl\Models\DatabaseHost;
+-use Illuminate\Database\DatabaseManager;
+ use Illuminate\Database\ConnectionInterface;
+ use Illuminate\Contracts\Encryption\Encrypter;
+-use Pterodactyl\Extensions\DynamicDatabaseConnection;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
+ 
+ class HostUpdateService
+@@ -16,9 +15,8 @@ class HostUpdateService
+      */
+     public function __construct(
+         private ConnectionInterface $connection,
+-        private DatabaseManager $databaseManager,
+-        private DynamicDatabaseConnection $dynamic,
+         private Encrypter $encrypter,
++        private ProvisionerFactory $provisionerFactory,
+         private DatabaseHostRepositoryInterface $repository,
+     ) {
+     }
+@@ -30,6 +28,13 @@ class HostUpdateService
+      */
+     public function handle(int $hostId, array $data): DatabaseHost
+     {
++        // Prevent changing the driver of a host that already has databases provisioned,
++        // as existing databases would become unmanageable under a different driver.
++        $existing = DatabaseHost::findOrFail($hostId);
++        if (isset($data['driver']) && $data['driver'] !== ($existing->driver ?? 'mysql') && $existing->databases()->count() > 0) {
++            throw new \LogicException('Cannot change the driver of a database host that has active databases.');
++        }
++
+         if (!empty(array_get($data, 'password'))) {
+             $data['password'] = $this->encrypter->encrypt($data['password']);
+         } else {
+@@ -38,8 +43,14 @@ class HostUpdateService
+ 
+         return $this->connection->transaction(function () use ($data, $hostId) {
+             $host = $this->repository->update($hostId, $data);
+-            $this->dynamic->set('dynamic', $host);
+-            $this->databaseManager->connection('dynamic')->select('SELECT 1 FROM dual');
++
++            // Confirm access using the provided/updated credentials before saving data.
++            $provisioner = $this->provisionerFactory->forHost($host);
++            $result = $provisioner->testConnection($host);
++
++            if (!$result['has_required_permissions']) {
++                throw new \RuntimeException($result['message']);
++            }
+ 
+             return $host;
+         });
+diff --git a/tests/Integration/Services/Databases/DatabaseManagementServiceTest.php b/tests/Integration/Services/Databases/DatabaseManagementServiceTest.php
+index 7ccfb8338..15cafaf8d 100644
+--- a/tests/Integration/Services/Databases/DatabaseManagementServiceTest.php
++++ b/tests/Integration/Services/Databases/DatabaseManagementServiceTest.php
+@@ -6,7 +6,8 @@ use Mockery\MockInterface;
+ use Pterodactyl\Models\Database;
+ use Pterodactyl\Models\DatabaseHost;
+ use Pterodactyl\Tests\Integration\IntegrationTestCase;
+-use Pterodactyl\Repositories\Eloquent\DatabaseRepository;
++use Pterodactyl\Contracts\Database\DatabaseProvisionerInterface;
++use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
+ use Pterodactyl\Services\Databases\DatabaseManagementService;
+ use Pterodactyl\Exceptions\Repository\DuplicateDatabaseNameException;
+ use Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException;
+@@ -14,7 +15,7 @@ use Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledExcep
+ 
+ class DatabaseManagementServiceTest extends IntegrationTestCase
+ {
+-    private MockInterface $repository;
++    private MockInterface $provisioner;
+ 
+     /**
+      * Setup tests.
+@@ -25,7 +26,10 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
+ 
+         config()->set('pterodactyl.client_features.databases.enabled', true);
+ 
+-        $this->repository = $this->mock(DatabaseRepository::class);
++        $this->provisioner = \Mockery::mock(DatabaseProvisionerInterface::class);
++        $factory = \Mockery::mock(ProvisionerFactory::class);
++        $factory->shouldReceive('forHost')->andReturn($this->provisioner);
++        $this->app->instance(ProvisionerFactory::class, $factory);
+     }
+ 
+     /**
+@@ -120,37 +124,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
+ 
+         $host = DatabaseHost::factory()->create(['node_id' => $server->node_id]);
+ 
+-        $this->repository->expects('createDatabase')->with($name);
+-
+-        $username = null;
+-        $secondUsername = null;
+-        $password = null;
+-
+-        // The value setting inside the closures if to avoid throwing an exception during the
+-        // assertions that would get caught by the functions catcher and thus lead to the exception
+-        // being swallowed incorrectly.
+-        $this->repository->expects('createUser')->with(
+-            \Mockery::on(function ($value) use (&$username) {
+-                $username = $value;
+-
+-                return true;
+-            }),
+-            '%',
+-            \Mockery::on(function ($value) use (&$password) {
+-                $password = $value;
+-
+-                return true;
+-            }),
+-            null
+-        );
+-
+-        $this->repository->expects('assignUserToDatabase')->with($name, \Mockery::on(function ($value) use (&$secondUsername) {
+-            $secondUsername = $value;
+-
+-            return true;
+-        }), '%');
+-
+-        $this->repository->expects('flush')->withNoArgs();
++        $this->provisioner->expects('createDatabase')->once();
++        $this->provisioner->expects('createUser')->once();
++        $this->provisioner->expects('assignUserToDatabase')->once();
+ 
+         $response = $this->getService()->create($server, [
+             'remote' => '%',
+@@ -160,9 +136,8 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
+ 
+         $this->assertInstanceOf(Database::class, $response);
+         $this->assertSame($response->server_id, $server->id);
+-        $this->assertMatchesRegularExpression('/^(u\d+_)(\w){10}$/', $username);
+-        $this->assertSame($username, $secondUsername);
+-        $this->assertSame(24, strlen($password));
++        $this->assertSame($name, $response->database);
++        $this->assertMatchesRegularExpression('/^u\d+_\w{10}$/', $response->username);
+ 
+         $this->assertDatabaseHas('databases', ['server_id' => $server->id, 'id' => $response->id]);
+     }
+@@ -178,9 +153,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
+ 
+         $host = DatabaseHost::factory()->create(['node_id' => $server->node_id]);
+ 
+-        $this->repository->expects('createDatabase')->with($name)->andThrows(new \BadMethodCallException());
+-        $this->repository->expects('dropDatabase')->with($name);
+-        $this->repository->expects('dropUser')->withAnyArgs()->andThrows(new \InvalidArgumentException());
++        $this->provisioner->expects('createDatabase')->once()->andThrows(new \BadMethodCallException());
++        $this->provisioner->expects('dropDatabase')->once();
++        $this->provisioner->expects('dropUser')->once()->andThrows(new \InvalidArgumentException());
+ 
+         $this->expectException(\BadMethodCallException::class);
+ 
+-- 
+2.43.0
+
