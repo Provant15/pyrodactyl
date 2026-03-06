@@ -7,6 +7,7 @@ export interface ServerDatabase {
     username: string;
     connectionString: string;
     allowConnectionsFrom: string;
+    driver: string;
     password?: string;
 }
 
@@ -16,6 +17,7 @@ export const rawDataToServerDatabase = (data: any): ServerDatabase => ({
     username: data.username,
     connectionString: `${data.host.address}:${data.host.port}`,
     allowConnectionsFrom: data.connections_from,
+    driver: data.host.driver || 'mysql',
     password: data.relationships.password?.attributes?.password,
 });
 

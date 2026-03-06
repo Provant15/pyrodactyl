@@ -43,7 +43,8 @@ const DatabaseRow = ({ database }: Props) => {
     const appendDatabase = ServerContext.useStoreActions((actions) => actions.databases.appendDatabase);
     const removeDatabase = ServerContext.useStoreActions((actions) => actions.databases.removeDatabase);
 
-    const jdbcConnectionString = `jdbc:mysql://${database.username}${database.password ? `:${encodeURIComponent(database.password)}` : ''}@${database.connectionString}/${database.name}`;
+    const jdbcPrefix = database.driver === 'pgsql' ? 'jdbc:postgresql' : 'jdbc:mysql';
+    const jdbcConnectionString = `${jdbcPrefix}://${database.username}${database.password ? `:${encodeURIComponent(database.password)}` : ''}@${database.connectionString}/${database.name}`;
 
     const schema = object().shape({
         confirm: string()
@@ -129,12 +130,14 @@ const DatabaseRow = ({ database }: Props) => {
                                 <Input type={'text'} readOnly value={database.connectionString} />
                             </CopyOnClick>
                         </div>
-                        <div className='flex flex-col'>
-                            <Label>Connections from</Label>
-                            <CopyOnClick text={database.allowConnectionsFrom}>
-                                <Input type={'text'} readOnly value={database.allowConnectionsFrom} />
-                            </CopyOnClick>
-                        </div>
+                        {database.driver !== 'pgsql' && (
+                            <div className='flex flex-col'>
+                                <Label>Connections from</Label>
+                                <CopyOnClick text={database.allowConnectionsFrom}>
+                                    <Input type={'text'} readOnly value={database.allowConnectionsFrom} />
+                                </CopyOnClick>
+                            </div>
+                        )}
                         <div className='flex flex-col'>
                             <Label>Username</Label>
                             <CopyOnClick text={database.username}>
@@ -182,6 +185,9 @@ const DatabaseRow = ({ database }: Props) => {
                                 <CopyOnClick text={database.name}>
                                     <h3 className='text-base font-medium text-zinc-100 truncate'>{database.name}</h3>
                                 </CopyOnClick>
+                                <span className='text-xs px-1.5 py-0.5 rounded bg-[#ffffff11] text-zinc-400 uppercase tracking-wider flex-shrink-0'>
+                                    {database.driver === 'pgsql' ? 'PG' : 'MySQL'}
+                                </span>
                             </div>
                         </div>
 
@@ -192,12 +198,14 @@ const DatabaseRow = ({ database }: Props) => {
                                     <p className='text-zinc-300 font-mono truncate'>{database.connectionString}</p>
                                 </CopyOnClick>
                             </div>
-                            <div>
-                                <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>From</p>
-                                <CopyOnClick text={database.allowConnectionsFrom}>
-                                    <p className='text-zinc-300 font-mono truncate'>{database.allowConnectionsFrom}</p>
-                                </CopyOnClick>
-                            </div>
+                            {database.driver !== 'pgsql' && (
+                                <div>
+                                    <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>From</p>
+                                    <CopyOnClick text={database.allowConnectionsFrom}>
+                                        <p className='text-zinc-300 font-mono truncate'>{database.allowConnectionsFrom}</p>
+                                    </CopyOnClick>
+                                </div>
+                            )}
                             <div>
                                 <p className='text-xs text-zinc-500 uppercase tracking-wide mb-1'>Username</p>
                                 <CopyOnClick text={database.username}>

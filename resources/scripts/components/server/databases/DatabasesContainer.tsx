@@ -115,7 +115,7 @@ const DatabasesContainer = () => {
                 }
             >
                 <p className='text-sm text-neutral-400 leading-relaxed'>
-                    Create and manage MySQL databases for your server. Configure database access, manage users, and view
+                    Create and manage databases for your server. Configure database access, manage users, and view
                     connection details.
                 </p>
             </MainPageHeader>
