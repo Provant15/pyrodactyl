@@ -1,4 +1,4 @@
-import { AbbrApi, Gear, House, Key, Xmark } from '@gravity-ui/icons';
+import { Gear, House, Xmark } from '@gravity-ui/icons';
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
@@ -80,12 +80,6 @@ export const DashboardMobileMenu = ({ isVisible, onClose }: DashboardMobileMenuP
         <MobileFullScreenMenu isVisible={isVisible} onClose={onClose}>
             <NavigationItem to='/' icon={House} end onClick={onClose}>
                 Servers
-            </NavigationItem>
-            <NavigationItem to='/account/api' icon={AbbrApi} end onClick={onClose}>
-                API Keys
-            </NavigationItem>
-            <NavigationItem to='/account/ssh' icon={Key} end onClick={onClose}>
-                SSH Keys
             </NavigationItem>
             <NavigationItem to='/account' icon={Gear} end onClick={onClose}>
                 Settings

@@ -1,4 +1,5 @@
-import { BarsPlay } from '@gravity-ui/icons';
+import { BarsPlay, ChevronDown, ChevronRight } from '@gravity-ui/icons';
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
 import {
@@ -18,6 +19,7 @@ interface MobileTopBarProps {
 }
 
 const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootAdmin }: MobileTopBarProps) => {
+    const [personalOpen, setPersonalOpen] = useState(false);
     const handleMenuToggle = () => {
         try {
             if (onMenuToggle && typeof onMenuToggle === 'function') {
@@ -74,12 +76,32 @@ const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootA
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className='z-99999' sideOffset={8}>
                         {rootAdmin && onSelectAdminPanel && (
-                            <DropdownMenuItem onSelect={handleAdminPanel}>
-                                Admin Panel
-                                <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs text-white'>
-                                    Staff
-                                </span>
-                            </DropdownMenuItem>
+                            <>
+                                <DropdownMenuItem onSelect={handleAdminPanel}>
+                                    Admin Panel
+                                    <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs text-white'>
+                                        Staff
+                                    </span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                            </>
+                        )}
+                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setPersonalOpen(!personalOpen); }}>
+                            Personal
+                            {personalOpen
+                                ? <ChevronDown width={14} height={14} className='ml-auto' />
+                                : <ChevronRight width={14} height={14} className='ml-auto' />
+                            }
+                        </DropdownMenuItem>
+                        {personalOpen && (
+                            <>
+                                <DropdownMenuItem className='pl-6' onSelect={() => window.location.assign('/account/ssh')}>
+                                    SSH Keys
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className='pl-6' onSelect={() => window.location.assign('/account/api')}>
+                                    API Keys
+                                </DropdownMenuItem>
+                            </>
                         )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={handleLogout}>Log Out</DropdownMenuItem>

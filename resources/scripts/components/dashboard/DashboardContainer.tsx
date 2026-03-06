@@ -1,4 +1,4 @@
-import { Bars, ChevronDown, House, LayoutCellsLarge, SlidersVertical } from '@gravity-ui/icons';
+import { Bars, ChevronDown, House, LayoutCellsLarge, Plus, SlidersVertical } from '@gravity-ui/icons';
 import { useStoreState } from 'easy-peasy';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -138,6 +138,18 @@ const DashboardContainer = () => {
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
+
+                                    {rootAdmin && (
+                                        <a
+                                            href='/admin/servers/new'
+                                            target='_blank'
+                                            rel='noreferrer'
+                                            className='inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#ffffff11] px-3 py-1.5 text-sm font-medium text-[#ffffff88] transition-all hover:bg-[#ffffff23] hover:text-[#ffffff] focus-visible:outline-hidden'
+                                        >
+                                            <Plus width={18} height={18} color='white' />
+                                            <span>Create</span>
+                                        </a>
+                                    )}
 
                                     <TabsList>
                                         <TabsTrigger aria-label='View servers in a list layout.' value='list'>

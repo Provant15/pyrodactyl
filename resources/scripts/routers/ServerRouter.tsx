@@ -1,6 +1,6 @@
 'use client';
 
-import { Ellipsis } from '@gravity-ui/icons';
+import { Lock, Person, Power } from '@gravity-ui/icons';
 import { useStoreState } from 'easy-peasy';
 import type { RefObject } from 'react';
 import { Fragment, Suspense, createRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,7 +12,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/elements/DropdownMenu';
 import ErrorBoundary from '@/components/elements/ErrorBoundary';
@@ -278,29 +277,10 @@ const ServerRouter = () => {
                     <div className='flex flex-row w-full lg:pt-0 pt-16'>
                         {/* Desktop Sidebar */}
                         <MainSidebar className='hidden lg:flex lg:relative lg:shrink-0 w-[300px] bg-[#1a1a1a] flex flex-col h-screen'>
-                            <div className='flex flex-row items-center justify-between h-20'>
+                            <div className='flex flex-row items-center h-20'>
                                 <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
                                     <Logo uniqueId='server-desktop-sidebar' />
                                 </NavLink>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <button className='w-10 h-10 flex items-center justify-center rounded-md text-white hover:bg-[#ffffff11] p-2 select-none cursor-pointer'>
-                                            <Ellipsis fill='currentColor' width={26} height={22} />
-                                        </button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent className='z-99999 select-none relative' sideOffset={8}>
-                                        {rootAdmin && (
-                                            <DropdownMenuItem onSelect={onSelectManageServer}>
-                                                Manage Server
-                                                <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs select-none'>
-                                                    Staff
-                                                </span>
-                                            </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onSelect={onTriggerLogout}>Log Out</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
                             </div>
                             <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
                             {/* Highlight */}
@@ -339,6 +319,36 @@ const ServerRouter = () => {
                                     />
                                 ))}
                             </ul>
+                            <div data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper shrink-0'>
+                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+                                {rootAdmin && (
+                                    <a href={`/admin/servers/view/${serverId}`} target='_blank' rel='noreferrer' className='flex flex-row items-center'>
+                                        <Lock width={22} height={22} fill='currentColor' />
+                                        <p>Manage Server</p>
+                                        <span className='ml-auto rounded-full bg-brand px-2 py-1 text-xs text-white'>Staff</span>
+                                    </a>
+                                )}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <div className='flex flex-row items-center cursor-pointer'>
+                                            <Person width={22} height={22} fill='currentColor' />
+                                            <p>Personal</p>
+                                        </div>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent side='right' className='z-99999' sideOffset={8}>
+                                        <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
+                                            SSH Keys
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
+                                            API Keys
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <div className='flex flex-row items-center cursor-pointer' onClick={onTriggerLogout}>
+                                    <Power width={22} height={22} fill='currentColor' />
+                                    <p>Log Out</p>
+                                </div>
+                            </div>
                             <div className='shrink-0'>
                                 <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-full'></div>
                                 <StatBlock

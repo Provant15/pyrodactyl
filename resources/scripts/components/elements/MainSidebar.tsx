@@ -5,7 +5,7 @@ const MainSidebar = styled.nav`
     flex-direction: column;
     shrink: 0;
     border-radius: 8px;
-    overflow-x: hidden;
+    overflow: visible;
     padding: 32px;
     // position: absolute;
     margin-right: 8px;

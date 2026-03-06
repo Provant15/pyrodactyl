@@ -1,4 +1,4 @@
-import { Ellipsis, Gear, House, Key, Lock } from '@gravity-ui/icons';
+import { Gear, House, Lock, Person, Power } from '@gravity-ui/icons';
 import { useStoreState } from 'easy-peasy';
 import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
@@ -10,7 +10,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/elements/DropdownMenu';
 import MainSidebar from '@/components/elements/MainSidebar';
@@ -51,25 +50,16 @@ const DashboardRouter = () => {
     // Define refs for navigation buttons.
     const NavigationHome = useRef(null);
     const NavigationSettings = useRef(null);
-    const NavigationApi = useRef(null);
-    const NavigationSSH = useRef(null);
 
     const calculateTop = (pathname: string) => {
-        // Get currents of navigation refs.
         const ButtonHome = NavigationHome.current;
         const ButtonSettings = NavigationSettings.current;
-        const ButtonApi = NavigationApi.current;
-        const ButtonSSH = NavigationSSH.current;
 
-        // Perfectly center the page highlighter with simple math.
-        // Height of navigation links (56) minus highlight height (40) equals 16. 16 devided by 2 is 8.
         const HighlightOffset: number = 8;
 
         if (pathname.endsWith(`/`) && ButtonHome != null) return (ButtonHome as any).offsetTop + HighlightOffset;
         if (pathname.endsWith(`/account`) && ButtonSettings != null)
             return (ButtonSettings as any).offsetTop + HighlightOffset;
-        if (pathname.endsWith('/api') && ButtonApi != null) return (ButtonApi as any).offsetTop + HighlightOffset;
-        if (pathname.endsWith('/ssh') && ButtonSSH != null) return (ButtonSSH as any).offsetTop + HighlightOffset;
         return '0';
     };
 
@@ -118,31 +108,10 @@ const DashboardRouter = () => {
                                 'top linear(0,0.006,0.025 2.8%,0.101 6.1%,0.539 18.9%,0.721 25.3%,0.849 31.5%,0.937 38.1%,0.968 41.8%,0.991 45.7%,1.006 50.1%,1.015 55%,1.017 63.9%,1.001) 390ms',
                         }}
                     />
-                    <div className='relative flex flex-row items-center justify-between h-20'>
+                    <div className='relative flex flex-row items-center h-20'>
                         <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
                             <Logo uniqueId='desktop-sidebar' />
-                            {/* <h1 className='text-[35px] font-semibold leading-[98%] tracking-[-0.05rem] mb-8'>Panel</h1> */}
                         </NavLink>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button className='w-10 h-10 flex items-center justify-center rounded-md text-white hover:bg-white/10 p-2 cursor-pointer'>
-                                    {' '}
-                                    <Ellipsis fill='currentColor' width={26} height={22} />
-                                </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className='z-99999' sideOffset={8}>
-                                {rootAdmin && (
-                                    <DropdownMenuItem onSelect={onSelectAdminPanel}>
-                                        Admin Panel
-                                        <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs text-white'>
-                                            Staff
-                                        </span>
-                                    </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onSelect={onTriggerLogout}>Log Out</DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                     <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
                     <ul data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper'>
@@ -150,18 +119,37 @@ const DashboardRouter = () => {
                             <House width={22} height={22} fill='currentColor' />
                             <p>Servers</p>
                         </NavLink>
-                        <NavLink to={'/account/api'} end className='flex flex-row items-center' ref={NavigationApi}>
-                            <Lock width={22} height={22} fill='currentColor' />
-                            <p>API Keys</p>
-                        </NavLink>
-                        <NavLink to={'/account/ssh'} end className='flex flex-row items-center' ref={NavigationSSH}>
-                            <Key width={22} height={22} fill='currentColor' />
-                            <p>SSH Keys</p>
-                        </NavLink>
                         <NavLink to={'/account'} end className='flex flex-row items-center' ref={NavigationSettings}>
                             <Gear width={22} height={22} fill='currentColor' />
                             <p>Settings</p>
                         </NavLink>
+                        {rootAdmin && (
+                            <a href='/admin' target='_blank' rel='noreferrer' className='flex flex-row items-center'>
+                                <Lock width={22} height={22} fill='currentColor' />
+                                <p>Admin Panel</p>
+                                <span className='ml-auto rounded-full bg-brand px-2 py-1 text-xs text-white'>Staff</span>
+                            </a>
+                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <div className='flex flex-row items-center cursor-pointer'>
+                                    <Person width={22} height={22} fill='currentColor' />
+                                    <p>Personal</p>
+                                </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent side='right' className='z-99999' sideOffset={8}>
+                                <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
+                                    SSH Keys
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
+                                    API Keys
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <div className='flex flex-row items-center cursor-pointer' onClick={onTriggerLogout}>
+                            <Power width={22} height={22} fill='currentColor' />
+                            <p>Log Out</p>
+                        </div>
                     </ul>
                 </MainSidebar>
 
