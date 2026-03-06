@@ -1,0 +1,80 @@
+# Dashboard Navigation Redesign - Design
+
+## Goal
+
+Make server creation a front-and-centre action on the dashboard and declutter the sidebar by relocating infrequently used account management links.
+
+## Changes
+
+### 1. Create Server Button
+
+Add a "+" (Create Server) button to the dashboard header, placed next to the grid/list toggle:
+
+```
+[Server Filter v]  [+ Create]  [List | Grid]
+```
+
+- Styled identically to the filter/grid toggle controls
+- Only rendered when user is a root admin (`rootAdmin === true`)
+- Navigates to `/admin/servers/new`
+
+### 2. Dropdown Menu Restructure
+
+Restructure the ellipsis dropdown menu (top-right of sidebar) to absorb API Keys and SSH Keys under a "Personal" submenu:
+
+```
+Admin Panel (Staff)      <- root admin only
+-----------------------
+Personal               > SSH Keys
+                         API Keys
+-----------------------
+Log Out
+```
+
+- Uses Radix UI `DropdownMenuSub` (already available via Pyrodactyl's DropdownMenu component)
+- Submenu items navigate to existing routes (`/account/ssh`, `/account/api`)
+- Applied to both DashboardRouter and ServerRouter dropdown menus
+
+### 3. Sidebar Simplification
+
+Remove API Keys and SSH Keys from the sidebar navigation, leaving two items:
+
+1. Servers (`/`)
+2. Settings (`/account`)
+
+This requires:
+- Removing the `<li>` elements and their associated refs (`NavigationApi`, `NavigationSSH`)
+- Simplifying the `calculateTop()` highlight positioning function (from 4 items to 2)
+- The animated highlight indicator and glow effect remain unchanged
+
+### 4. Mobile Navigation
+
+Mirror the desktop changes:
+- Remove API Keys and SSH Keys from `DashboardMobileMenu` (full-screen menu)
+- Add Personal submenu to the mobile top bar dropdown (matches desktop dropdown structure)
+- Create Server button not needed on mobile (admin panel handles it)
+
+## What Does NOT Change
+
+- Routes: `/account/api` and `/account/ssh` remain accessible via direct URL
+- Page components: `AccountApiContainer` and `AccountSSHContainer` unchanged
+- Route config in `routes.ts` unchanged
+- Server sidebar navigation (ServerRouter has server-specific items, unaffected)
+- Settings page and its route
+
+## Affected Files
+
+| File | Change |
+|------|--------|
+| `resources/scripts/components/dashboard/DashboardContainer.tsx` | Add "+" create server button |
+| `resources/scripts/routers/DashboardRouter.tsx` | Remove API/SSH nav items, simplify highlight refs, add Personal submenu to dropdown |
+| `resources/scripts/routers/ServerRouter.tsx` | Add Personal submenu to dropdown |
+| `resources/scripts/components/elements/MobileTopBar.tsx` | Add Personal submenu to mobile dropdown |
+| `resources/scripts/components/elements/MobileFullScreenMenu.tsx` | Remove API/SSH from mobile menu |
+
+## Design Decisions
+
+- **"+" button placement:** Next to grid/list toggle rather than in the sidebar, because it's an action not a navigation destination. Keeps sidebar purely navigational.
+- **Personal submenu:** Groups account management items without cluttering the dropdown. Radix submenus are built-in, no custom component needed.
+- **Root admin gate on create button:** Matches the existing permission model. Non-admin users assigned to servers have no reason to see a create button.
+- **Routes preserved:** Moving nav links does not require changing routing. Users who bookmark `/account/api` still get there.
