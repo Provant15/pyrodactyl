@@ -142,6 +142,16 @@
       "author": null,
       "date": "2026-03-06",
       "risk": "low"
+    },
+    {
+      "id": "0011",
+      "title": "feat dashboard redesign navigation create button personal submenu",
+      "file": "0011-feat-dashboard-redesign-navigation-create-button-per.patch",
+      "category": "ui",
+      "description": "Add Create Server button to dashboard header (root admin only), move API/SSH keys into sidebar Personal dropdown, replace ellipsis with sidebar nav items for Admin Panel, Personal, and Log Out. Simplify sidebar to Servers + Settings + contextual actions.",
+      "author": null,
+      "date": "2026-03-06",
+      "risk": "low"
     }
   ]
 }
