@@ -40,6 +40,7 @@ class DatabaseTransformer extends BaseClientTransformer
             'host' => [
                 'address' => $model->getRelation('host')->host,
                 'port' => $model->getRelation('host')->port,
+                'driver' => $model->getRelation('host')->driver ?? 'mysql',
             ],
             'name' => $model->database,
             'username' => $model->username,

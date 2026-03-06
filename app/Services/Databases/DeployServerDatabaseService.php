@@ -18,14 +18,24 @@ class DeployServerDatabaseService
     }
 
     /**
-     * @throws \Throwable
+     * Deploy a database for the given server, selecting a suitable host.
+     *
+     * Picks a database host on the same node when available, otherwise falls
+     * back to a random host if the configuration allows it. The `remote` field
+     * defaults to '%' (allow all) when not supplied - PostgreSQL hosts do not
+     * use user@host grants, so requiring it would be incorrect.
+     *
+     * @param Server $server The server to create a database for.
+     * @param array  $data   Must contain 'database'; 'remote' is optional.
+     *
+     * @throws \Pterodactyl\Exceptions\Service\Database\NoSuitableDatabaseHostException
      * @throws \Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException
      * @throws \Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException
+     * @throws \Throwable
      */
     public function handle(Server $server, array $data): Database
     {
         Assert::notEmpty($data['database'] ?? null);
-        Assert::notEmpty($data['remote'] ?? null);
 
         $hosts = DatabaseHost::query()->get()->toBase();
         if ($hosts->isEmpty()) {
@@ -43,7 +53,7 @@ class DeployServerDatabaseService
                 ? $hosts->random()->id
                 : $nodeHosts->random()->id,
             'database' => DatabaseManagementService::generateUniqueDatabaseName($data['database'], $server->id),
-            'remote' => $data['remote'],
+            'remote' => $data['remote'] ?? '%',
         ]);
     }
 }

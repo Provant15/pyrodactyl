@@ -206,7 +206,7 @@ class ServersController extends Controller
     {
         $this->databaseManagementService->create($server, [
             'database' => DatabaseManagementService::generateUniqueDatabaseName($request->input('database'), $server->id),
-            'remote' => $request->input('remote'),
+            'remote' => $request->input('remote', '%'),
             'database_host_id' => $request->input('database_host_id'),
             'max_connections' => $request->input('max_connections'),
         ]);

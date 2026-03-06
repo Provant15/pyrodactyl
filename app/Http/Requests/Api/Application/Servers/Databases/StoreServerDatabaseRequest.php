@@ -33,7 +33,7 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
                     $query->where('server_id', $server->id)->where('database', $this->databaseName());
                 }),
             ],
-            'remote' => 'required|string|regex:/^[0-9%.]{1,15}$/',
+            'remote' => 'sometimes|nullable|string|regex:/^[0-9%.]{1,15}$/',
             'host' => 'required|integer|exists:database_hosts,id',
         ];
     }
@@ -45,7 +45,7 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
     {
         return [
             'database' => $this->input('database'),
-            'remote' => $this->input('remote'),
+            'remote' => $this->input('remote', '%'),
             'database_host_id' => $this->input('host'),
         ];
     }
