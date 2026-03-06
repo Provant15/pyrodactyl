@@ -6,7 +6,8 @@ use Mockery\MockInterface;
 use Pterodactyl\Models\Database;
 use Pterodactyl\Models\DatabaseHost;
 use Pterodactyl\Tests\Integration\IntegrationTestCase;
-use Pterodactyl\Repositories\Eloquent\DatabaseRepository;
+use Pterodactyl\Contracts\Database\DatabaseProvisionerInterface;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Services\Databases\DatabaseManagementService;
 use Pterodactyl\Exceptions\Repository\DuplicateDatabaseNameException;
 use Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException;
@@ -14,7 +15,7 @@ use Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledExcep
 
 class DatabaseManagementServiceTest extends IntegrationTestCase
 {
-    private MockInterface $repository;
+    private MockInterface $provisioner;
 
     /**
      * Setup tests.
@@ -25,7 +26,10 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         config()->set('pterodactyl.client_features.databases.enabled', true);
 
-        $this->repository = $this->mock(DatabaseRepository::class);
+        $this->provisioner = \Mockery::mock(DatabaseProvisionerInterface::class);
+        $factory = \Mockery::mock(ProvisionerFactory::class);
+        $factory->shouldReceive('forHost')->andReturn($this->provisioner);
+        $this->app->instance(ProvisionerFactory::class, $factory);
     }
 
     /**
@@ -120,37 +124,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         $host = DatabaseHost::factory()->create(['node_id' => $server->node_id]);
 
-        $this->repository->expects('createDatabase')->with($name);
-
-        $username = null;
-        $secondUsername = null;
-        $password = null;
-
-        // The value setting inside the closures if to avoid throwing an exception during the
-        // assertions that would get caught by the functions catcher and thus lead to the exception
-        // being swallowed incorrectly.
-        $this->repository->expects('createUser')->with(
-            \Mockery::on(function ($value) use (&$username) {
-                $username = $value;
-
-                return true;
-            }),
-            '%',
-            \Mockery::on(function ($value) use (&$password) {
-                $password = $value;
-
-                return true;
-            }),
-            null
-        );
-
-        $this->repository->expects('assignUserToDatabase')->with($name, \Mockery::on(function ($value) use (&$secondUsername) {
-            $secondUsername = $value;
-
-            return true;
-        }), '%');
-
-        $this->repository->expects('flush')->withNoArgs();
+        $this->provisioner->expects('createDatabase')->once();
+        $this->provisioner->expects('createUser')->once();
+        $this->provisioner->expects('assignUserToDatabase')->once();
 
         $response = $this->getService()->create($server, [
             'remote' => '%',
@@ -160,9 +136,8 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         $this->assertInstanceOf(Database::class, $response);
         $this->assertSame($response->server_id, $server->id);
-        $this->assertMatchesRegularExpression('/^(u\d+_)(\w){10}$/', $username);
-        $this->assertSame($username, $secondUsername);
-        $this->assertSame(24, strlen($password));
+        $this->assertSame($name, $response->database);
+        $this->assertMatchesRegularExpression('/^u\d+_\w{10}$/', $response->username);
 
         $this->assertDatabaseHas('databases', ['server_id' => $server->id, 'id' => $response->id]);
     }
@@ -178,9 +153,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         $host = DatabaseHost::factory()->create(['node_id' => $server->node_id]);
 
-        $this->repository->expects('createDatabase')->with($name)->andThrows(new \BadMethodCallException());
-        $this->repository->expects('dropDatabase')->with($name);
-        $this->repository->expects('dropUser')->withAnyArgs()->andThrows(new \InvalidArgumentException());
+        $this->provisioner->expects('createDatabase')->once()->andThrows(new \BadMethodCallException());
+        $this->provisioner->expects('dropDatabase')->once();
+        $this->provisioner->expects('dropUser')->once()->andThrows(new \InvalidArgumentException());
 
         $this->expectException(\BadMethodCallException::class);
 

@@ -3,10 +3,9 @@
 namespace Pterodactyl\Services\Databases\Hosts;
 
 use Pterodactyl\Models\DatabaseHost;
-use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Contracts\Encryption\Encrypter;
-use Pterodactyl\Extensions\DynamicDatabaseConnection;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
 
 class HostUpdateService
@@ -16,9 +15,8 @@ class HostUpdateService
      */
     public function __construct(
         private ConnectionInterface $connection,
-        private DatabaseManager $databaseManager,
-        private DynamicDatabaseConnection $dynamic,
         private Encrypter $encrypter,
+        private ProvisionerFactory $provisionerFactory,
         private DatabaseHostRepositoryInterface $repository,
     ) {
     }
@@ -30,6 +28,13 @@ class HostUpdateService
      */
     public function handle(int $hostId, array $data): DatabaseHost
     {
+        // Prevent changing the driver of a host that already has databases provisioned,
+        // as existing databases would become unmanageable under a different driver.
+        $existing = DatabaseHost::findOrFail($hostId);
+        if (isset($data['driver']) && $data['driver'] !== ($existing->driver ?? 'mysql') && $existing->databases()->count() > 0) {
+            throw new \LogicException('Cannot change the driver of a database host that has active databases.');
+        }
+
         if (!empty(array_get($data, 'password'))) {
             $data['password'] = $this->encrypter->encrypt($data['password']);
         } else {
@@ -38,8 +43,14 @@ class HostUpdateService
 
         return $this->connection->transaction(function () use ($data, $hostId) {
             $host = $this->repository->update($hostId, $data);
-            $this->dynamic->set('dynamic', $host);
-            $this->databaseManager->connection('dynamic')->select('SELECT 1 FROM dual');
+
+            // Confirm access using the provided/updated credentials before saving data.
+            $provisioner = $this->provisionerFactory->forHost($host);
+            $result = $provisioner->testConnection($host);
+
+            if (!$result['has_required_permissions']) {
+                throw new \RuntimeException($result['message']);
+            }
 
             return $host;
         });

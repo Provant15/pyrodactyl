@@ -3,10 +3,9 @@
 namespace Pterodactyl\Services\Databases\Hosts;
 
 use Pterodactyl\Models\DatabaseHost;
-use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Contracts\Encryption\Encrypter;
-use Pterodactyl\Extensions\DynamicDatabaseConnection;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Contracts\Repository\DatabaseHostRepositoryInterface;
 
 class HostCreationService
@@ -16,9 +15,8 @@ class HostCreationService
      */
     public function __construct(
         private ConnectionInterface $connection,
-        private DatabaseManager $databaseManager,
-        private DynamicDatabaseConnection $dynamic,
         private Encrypter $encrypter,
+        private ProvisionerFactory $provisionerFactory,
         private DatabaseHostRepositoryInterface $repository,
     ) {
     }
@@ -39,11 +37,16 @@ class HostCreationService
                 'username' => array_get($data, 'username'),
                 'max_databases' => null,
                 'node_id' => array_get($data, 'node_id'),
+                'driver' => array_get($data, 'driver', 'mysql'),
             ]);
 
             // Confirm access using the provided credentials before saving data.
-            $this->dynamic->set('dynamic', $host);
-            $this->databaseManager->connection('dynamic')->select('SELECT 1 FROM dual');
+            $provisioner = $this->provisionerFactory->forHost($host);
+            $result = $provisioner->testConnection($host);
+
+            if (!$result['has_required_permissions']) {
+                throw new \RuntimeException($result['message']);
+            }
 
             return $host;
         });

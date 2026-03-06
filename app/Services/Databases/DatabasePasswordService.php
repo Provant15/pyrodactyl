@@ -3,10 +3,11 @@
 namespace Pterodactyl\Services\Databases;
 
 use Pterodactyl\Models\Database;
+use Pterodactyl\Models\DatabaseHost;
 use Pterodactyl\Helpers\Utilities;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Contracts\Encryption\Encrypter;
-use Pterodactyl\Extensions\DynamicDatabaseConnection;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Contracts\Repository\DatabaseRepositoryInterface;
 
 class DatabasePasswordService
@@ -16,8 +17,8 @@ class DatabasePasswordService
      */
     public function __construct(
         private ConnectionInterface $connection,
-        private DynamicDatabaseConnection $dynamic,
         private Encrypter $encrypter,
+        private ProvisionerFactory $provisionerFactory,
         private DatabaseRepositoryInterface $repository,
     ) {
     }
@@ -32,16 +33,13 @@ class DatabasePasswordService
         $password = Utilities::randomStringWithSpecialCharacters(24);
 
         $this->connection->transaction(function () use ($database, $password) {
-            $this->dynamic->set('dynamic', $database->database_host_id);
-
             $this->repository->withoutFreshModel()->update($database->id, [
                 'password' => $this->encrypter->encrypt($password),
             ]);
 
-            $this->repository->dropUser($database->username, $database->remote);
-            $this->repository->createUser($database->username, $database->remote, $password, $database->max_connections);
-            $this->repository->assignUserToDatabase($database->database, $database->username, $database->remote);
-            $this->repository->flush();
+            $host = DatabaseHost::findOrFail($database->database_host_id);
+            $provisioner = $this->provisionerFactory->forHost($host);
+            $provisioner->rotatePassword($database, $host, $password);
         });
 
         return $password;

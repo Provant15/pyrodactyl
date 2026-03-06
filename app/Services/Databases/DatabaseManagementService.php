@@ -5,11 +5,11 @@ namespace Pterodactyl\Services\Databases;
 use Exception;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\Database;
+use Pterodactyl\Models\DatabaseHost;
 use Pterodactyl\Helpers\Utilities;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Contracts\Encryption\Encrypter;
-use Pterodactyl\Extensions\DynamicDatabaseConnection;
-use Pterodactyl\Repositories\Eloquent\DatabaseRepository;
+use Pterodactyl\Services\Databases\Provisioners\ProvisionerFactory;
 use Pterodactyl\Exceptions\Repository\DuplicateDatabaseNameException;
 use Pterodactyl\Exceptions\Service\Database\TooManyDatabasesException;
 use Pterodactyl\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException;
@@ -34,9 +34,8 @@ class DatabaseManagementService
 
     public function __construct(
         protected ConnectionInterface $connection,
-        protected DynamicDatabaseConnection $dynamic,
         protected Encrypter $encrypter,
-        protected DatabaseRepository $repository,
+        protected ProvisionerFactory $provisionerFactory,
     ) {}
 
     /**
@@ -105,30 +104,25 @@ class DatabaseManagementService
             return $this->connection->transaction(function () use ($data, &$database) {
                 $database = $this->createModel($data);
 
-                $this->dynamic->set('dynamic', $data['database_host_id']);
+                $host = DatabaseHost::findOrFail($data['database_host_id']);
+                $provisioner = $this->provisionerFactory->forHost($host);
 
-                $this->repository->createDatabase($database->database);
-                $this->repository->createUser(
-                    $database->username,
-                    $database->remote,
-                    $this->encrypter->decrypt($database->password),
-                    $database->max_connections
-                );
-                $this->repository->assignUserToDatabase($database->database, $database->username, $database->remote);
-                $this->repository->flush();
+                $provisioner->createDatabase($database, $host);
+                $provisioner->createUser($database, $host);
+                $provisioner->assignUserToDatabase($database, $host);
 
                 return $database;
             });
         } catch (\Exception $exception) {
             try {
                 if ($database instanceof Database) {
-                    $this->repository->dropDatabase($database->database);
-                    $this->repository->dropUser($database->username, $database->remote);
-                    $this->repository->flush();
+                    $host = DatabaseHost::findOrFail($database->database_host_id);
+                    $provisioner = $this->provisionerFactory->forHost($host);
+                    $provisioner->dropDatabase($database, $host);
+                    $provisioner->dropUser($database, $host);
                 }
             } catch (\Exception $deletionException) {
-                // Do nothing here. We've already encountered an issue before this point so no
-                // reason to prioritize this error over the initial one.
+                // Swallow cleanup errors; original exception takes priority.
             }
 
             throw $exception;
@@ -142,11 +136,11 @@ class DatabaseManagementService
      */
     public function delete(Database $database): ?bool
     {
-        $this->dynamic->set('dynamic', $database->database_host_id);
+        $host = DatabaseHost::findOrFail($database->database_host_id);
+        $provisioner = $this->provisionerFactory->forHost($host);
 
-        $this->repository->dropDatabase($database->database);
-        $this->repository->dropUser($database->username, $database->remote);
-        $this->repository->flush();
+        $provisioner->dropDatabase($database, $host);
+        $provisioner->dropUser($database, $host);
 
         return $database->delete();
     }
