@@ -1,4 +1,4 @@
-From 237ba2e3d67748ea0ff0bbc4f1452b47b0edad39 Mon Sep 17 00:00:00 2001
+From 5db731143e22a009cb3d3c8a8a2fb419e2011b55 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 21:53:17 +1000
 Subject: [PATCH] feat(dashboard): redesign navigation - create button +
@@ -15,11 +15,11 @@ Subject: [PATCH] feat(dashboard): redesign navigation - create button +
  .../dashboard/DashboardContainer.tsx          | 14 +++-
  .../components/elements/MainSidebar.tsx       |  2 +-
  .../elements/MobileFullScreenMenu.tsx         |  8 +--
- .../components/elements/MobileTopBar.tsx      | 29 ++++++--
+ .../components/elements/MobileTopBar.tsx      | 23 ++++--
  resources/scripts/routers/DashboardRouter.tsx | 70 ++++++++-----------
  resources/scripts/routers/ServerRouter.tsx    | 54 ++++++++------
  resources/views/layouts/admin.blade.php       |  2 +-
- 7 files changed, 100 insertions(+), 79 deletions(-)
+ 7 files changed, 94 insertions(+), 79 deletions(-)
 
 diff --git a/resources/scripts/components/dashboard/DashboardContainer.tsx b/resources/scripts/components/dashboard/DashboardContainer.tsx
 index bd1d145aa..6bfc029e8 100644
@@ -87,20 +87,18 @@ index c7d3ca241..2d6b4ea90 100644
                  Settings
              </NavigationItem>
 diff --git a/resources/scripts/components/elements/MobileTopBar.tsx b/resources/scripts/components/elements/MobileTopBar.tsx
-index 7a4db9e01..32d2c5cc5 100644
+index 7a4db9e01..9787c5422 100644
 --- a/resources/scripts/components/elements/MobileTopBar.tsx
 +++ b/resources/scripts/components/elements/MobileTopBar.tsx
-@@ -6,6 +6,9 @@ import {
+@@ -5,6 +5,7 @@ import {
+     DropdownMenu,
      DropdownMenuContent,
      DropdownMenuItem,
++    DropdownMenuLabel,
      DropdownMenuSeparator,
-+    DropdownMenuSub,
-+    DropdownMenuSubContent,
-+    DropdownMenuSubTrigger,
      DropdownMenuTrigger,
  } from '@/components/elements/DropdownMenu';
- import Logo from '@/components/elements/PyroLogo';
-@@ -74,13 +77,27 @@ const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootA
+@@ -74,13 +75,23 @@ const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootA
                      </DropdownMenuTrigger>
                      <DropdownMenuContent className='z-99999' sideOffset={8}>
                          {rootAdmin && onSelectAdminPanel && (
@@ -120,17 +118,13 @@ index 7a4db9e01..32d2c5cc5 100644
 +                                <DropdownMenuSeparator />
 +                            </>
                          )}
-+                        <DropdownMenuSub>
-+                            <DropdownMenuSubTrigger>Personal</DropdownMenuSubTrigger>
-+                            <DropdownMenuSubContent>
-+                                <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
-+                                    SSH Keys
-+                                </DropdownMenuItem>
-+                                <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
-+                                    API Keys
-+                                </DropdownMenuItem>
-+                            </DropdownMenuSubContent>
-+                        </DropdownMenuSub>
++                        <DropdownMenuLabel>Personal</DropdownMenuLabel>
++                        <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
++                            SSH Keys
++                        </DropdownMenuItem>
++                        <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
++                            API Keys
++                        </DropdownMenuItem>
                          <DropdownMenuSeparator />
                          <DropdownMenuItem onSelect={handleLogout}>Log Out</DropdownMenuItem>
                      </DropdownMenuContent>
