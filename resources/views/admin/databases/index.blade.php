@@ -28,6 +28,7 @@
                         <tr>
                             <th>ID</th>
                             <th>Name</th>
+                            <th>Driver</th>
                             <th>Host</th>
                             <th>Port</th>
                             <th>Username</th>
@@ -38,6 +39,13 @@
                             <tr>
                                 <td><code>{{ $host->id }}</code></td>
                                 <td><a href="{{ route('admin.databases.view', $host->id) }}">{{ $host->name }}</a></td>
+                                <td>
+                                    @if(($host->driver ?? 'mysql') === 'pgsql')
+                                        <span class="label label-info">PostgreSQL</span>
+                                    @else
+                                        <span class="label label-default">MySQL</span>
+                                    @endif
+                                </td>
                                 <td><code>{{ $host->host }}</code></td>
                                 <td><code>{{ $host->port }}</code></td>
                                 <td>{{ $host->username }}</td>
@@ -74,16 +82,23 @@
                         <input type="text" name="name" id="pName" class="form-control" value="{{ old('name') }}" />
                         <p class="text-muted small">A short identifier used to distinguish this location from others. Must be between 1 and 60 characters, for example, <code>us.nyc.lvl3</code>.</p>
                     </div>
+                    <div class="form-group">
+                        <label for="pDriver" class="form-label">Driver</label>
+                        <select name="driver" id="pDriver" class="form-control">
+                            <option value="mysql" {{ old('driver', 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL / MariaDB</option>
+                            <option value="pgsql" {{ old('driver') === 'pgsql' ? 'selected' : '' }}>PostgreSQL</option>
+                        </select>
+                    </div>
                     <div class="row">
                         <div class="col-md-6">
                             <label for="pHost" class="form-label">Host</label>
                             <input type="text" name="host" id="pHost" class="form-control" value="{{ old('host') }}" />
-                            <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this MySQL host <em>from the panel</em> to add new databases.</p>
+                            <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this database host <em>from the panel</em> to add new databases.</p>
                         </div>
                         <div class="col-md-6">
                             <label for="pPort" class="form-label">Port</label>
                             <input type="text" name="port" id="pPort" class="form-control" value="{{ old('port', '3306') }}"/>
-                            <p class="text-muted small">The port that MySQL is running on for this host.</p>
+                            <p class="text-muted small">The port that the database server is running on for this host.</p>
                         </div>
                     </div>
                     <div class="row">
@@ -114,7 +129,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have the <code>WITH GRANT OPTION</code> permission. If the defined account does not have this permission requests to create databases <em>will</em> fail. <strong>Do not use the same account details for MySQL that you have defined for this panel.</strong></p>
+                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have sufficient permissions to create databases and manage users. For MySQL, the account needs the <code>WITH GRANT OPTION</code> privilege. For PostgreSQL, the account needs <code>CREATEDB</code> and <code>CREATEROLE</code> privileges (or superuser). <strong>Do not use the same account details that you have defined for this panel's database.</strong></p>
                     {!! csrf_field() !!}
                     <button type="button" class="btn btn-default btn-sm pull-left" data-dismiss="modal">Cancel</button>
                     <button type="button" id="testDatabaseBtn" class="btn btn-primary btn-sm">Test Database</button>
@@ -130,6 +145,13 @@
     @parent
     <script>
         $('#pNodeId').select2();
+
+        $('#pDriver').on('change', function() {
+            var port = $(this).val() === 'pgsql' ? '5432' : '3306';
+            if ($('#pPort').val() === '3306' || $('#pPort').val() === '5432') {
+                $('#pPort').val(port);
+            }
+        });
 
         // Test database connection
         $('#testDatabaseBtn').on('click', function() {
@@ -147,12 +169,13 @@
                 port: $('#pPort').val(),
                 username: $('#pUsername').val(),
                 password: $('#pPassword').val(),
+                driver: $('#pDriver').val(),
                 _token: '{{ csrf_token() }}'
             };
 
             // Validate required fields
             if (!formData.host || !formData.port || !formData.username || !formData.password) {
-                resultDiv.html('<strong>Error:</strong> Please fill in all required database connection fields.').addClass('alert alert-danger').show();
+                resultDiv.text('Error: Please fill in all required database connection fields.').addClass('alert alert-danger').show();
                 button.prop('disabled', false).text(originalText);
                 return;
             }
@@ -164,9 +187,9 @@
                 data: formData,
                 success: function(response) {
                     if (response.success) {
-                        resultDiv.html('<strong>Success:</strong> ' + response.message).addClass('alert alert-success').show();
+                        resultDiv.text('Success: ' + response.message).addClass('alert alert-success').show();
                     } else {
-                        resultDiv.html('<strong>Error:</strong> ' + response.message).addClass('alert alert-danger').show();
+                        resultDiv.text('Error: ' + response.message).addClass('alert alert-danger').show();
                     }
                 },
                 error: function(xhr) {
@@ -176,7 +199,7 @@
                     } else if (xhr.statusText) {
                         message = xhr.statusText;
                     }
-                    resultDiv.html('<strong>Error:</strong> ' + message).addClass('alert alert-danger').show();
+                    resultDiv.text('Error: ' + message).addClass('alert alert-danger').show();
                 },
                 complete: function() {
                     button.prop('disabled', false).text(originalText);

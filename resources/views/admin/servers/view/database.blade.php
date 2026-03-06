@@ -32,6 +32,7 @@
                         <th>Username</th>
                         <th>Connections From</th>
                         <th>Host</th>
+                        <th>Driver</th>
                         <th>Max Connections</th>
                         <th></th>
                     </tr>
@@ -41,6 +42,13 @@
                             <td>{{ $database->username }}</td>
                             <td>{{ $database->remote }}</td>
                             <td><code>{{ $database->host->host }}:{{ $database->host->port }}</code></td>
+                            <td>
+                                @if(($database->host->driver ?? 'mysql') === 'pgsql')
+                                    <span class="label label-info">PG</span>
+                                @else
+                                    <span class="label label-default">MySQL</span>
+                                @endif
+                            </td>
                             @if($database->max_connections != null)
                                 <td>{{ $database->max_connections }}</td>
                             @else
@@ -67,7 +75,7 @@
                         <label for="pDatabaseHostId" class="control-label">Database Host</label>
                         <select id="pDatabaseHostId" name="database_host_id" class="form-control">
                             @foreach($hosts as $host)
-                                <option value="{{ $host->id }}">{{ $host->name }}</option>
+                                <option value="{{ $host->id }}">{{ $host->name }} ({{ ($host->driver ?? 'mysql') === 'pgsql' ? 'PostgreSQL' : 'MySQL' }})</option>
                             @endforeach
                         </select>
                         <p class="text-muted small">Select the host database server that this database should be created on.</p>
@@ -82,7 +90,7 @@
                     <div class="form-group">
                         <label for="pRemote" class="control-label">Connections</label>
                         <input id="pRemote" type="text" name="remote" class="form-control" value="%" />
-                        <p class="text-muted small">This should reflect the IP address that connections are allowed from. Uses standard MySQL notation. If unsure leave as <code>%</code>.</p>
+                        <p class="text-muted small">This should reflect the IP address that connections are allowed from. Uses standard MySQL notation. For PostgreSQL hosts this field is ignored. If unsure leave as <code>%</code>.</p>
                     </div>
                     <div class="form-group">
                         <label for="pmax_connections" class="control-label">Concurrent Connections</label>

@@ -27,14 +27,19 @@
                         <input type="text" id="pName" name="name" class="form-control" value="{{ old('name', $host->name) }}" />
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Driver</label>
+                        <input type="text" class="form-control" value="{{ ($host->driver ?? 'mysql') === 'pgsql' ? 'PostgreSQL' : 'MySQL / MariaDB' }}" readonly disabled />
+                        <p class="text-muted small">The database engine cannot be changed after creation.</p>
+                    </div>
+                    <div class="form-group">
                         <label for="pHost" class="form-label">Host</label>
                         <input type="text" id="pHost" name="host" class="form-control" value="{{ old('host', $host->host) }}" />
-                        <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this MySQL host <em>from the panel</em> to add new databases.</p>
+                        <p class="text-muted small">The IP address or FQDN that should be used when attempting to connect to this database host <em>from the panel</em> to add new databases.</p>
                     </div>
                     <div class="form-group">
                         <label for="pPort" class="form-label">Port</label>
                         <input type="text" id="pPort" name="port" class="form-control" value="{{ old('port', $host->port) }}" />
-                        <p class="text-muted small">The port that MySQL is running on for this host.</p>
+                        <p class="text-muted small">The port that the database server is running on for this host.</p>
                     </div>
                     <div class="form-group">
                         <label for="pNodeId" class="form-label">Linked Node</label>
@@ -70,7 +75,7 @@
                         <p class="text-muted small">The password to the account defined. Leave blank to continue using the assigned password.</p>
                     </div>
                     <hr />
-                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have the <code>WITH GRANT OPTION</code> permission. If the defined account does not have this permission requests to create databases <em>will</em> fail. <strong>Do not use the same account details for MySQL that you have defined for this panel.</strong></p>
+                    <p class="text-danger small text-left">The account defined for this database host <strong>must</strong> have sufficient permissions to create databases and manage users. For MySQL, the account needs the <code>WITH GRANT OPTION</code> privilege. For PostgreSQL, the account needs <code>CREATEDB</code> and <code>CREATEROLE</code> privileges (or superuser). <strong>Do not use the same account details that you have defined for this panel's database.</strong></p>
                 </div>
                 <div class="box-footer">
                     {!! csrf_field() !!}
