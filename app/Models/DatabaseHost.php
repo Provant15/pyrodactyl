@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 /**
  * @property int $id
  * @property string $name
+ * @property string $driver
  * @property string $host
  * @property int $port
  * @property string $username
@@ -46,6 +47,7 @@ class DatabaseHost extends Model
      */
     protected $fillable = [
         'name',
+        'driver',
         'host',
         'port',
         'username',
@@ -68,6 +70,7 @@ class DatabaseHost extends Model
      */
     public static array $validationRules = [
         'name' => 'required|string|max:191',
+        'driver' => 'sometimes|required|in:mysql,pgsql',
         'host' => 'required|string|regex:/^[\w\-\.]+$/',
         'port' => 'required|numeric|between:1,65535',
         'username' => 'required|string|max:32',

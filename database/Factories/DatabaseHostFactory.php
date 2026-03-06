@@ -22,10 +22,22 @@ class DatabaseHostFactory extends Factory
   {
     return [
       'name' => $this->faker->colorName,
+      'driver' => 'mysql',
       'host' => $this->faker->unique()->ipv4,
       'port' => 3306,
       'username' => $this->faker->colorName,
       'password' => Crypt::encrypt($this->faker->word),
     ];
+  }
+
+  /**
+   * Configure the factory to create a PostgreSQL host.
+   */
+  public function pgsql(): static
+  {
+    return $this->state(fn (array $attributes) => [
+      'driver' => 'pgsql',
+      'port' => 5432,
+    ]);
   }
 }
