@@ -278,8 +278,8 @@ const ServerRouter = () => {
                     <div className='flex flex-row w-full lg:pt-0 pt-16'>
                         {/* Desktop Sidebar */}
                         <MainSidebar className='hidden lg:flex lg:relative lg:shrink-0 w-[300px] bg-[#1a1a1a] flex flex-col h-screen'>
-                            <div className='flex flex-row items-center justify-between h-8'>
-                                <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
+                            <div className='flex flex-row items-center justify-between h-20'>
+                                <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
                                     <Logo uniqueId='server-desktop-sidebar' />
                                 </NavLink>
                                 <DropdownMenu>

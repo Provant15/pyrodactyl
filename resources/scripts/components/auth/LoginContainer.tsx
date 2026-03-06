@@ -89,7 +89,7 @@ function LoginContainer() {
         >
             {({ isSubmitting }) => (
                 <LoginFormContainer className={`w-full flex`}>
-                    <div className='flex h-12 mb-4 items-center w-full'>
+                    <div className='flex h-20 mb-4 items-center w-full'>
                         <Logo />
                     </div>
                     <div aria-hidden className='my-8 bg-[#ffffff33] min-h-[1px]'></div>

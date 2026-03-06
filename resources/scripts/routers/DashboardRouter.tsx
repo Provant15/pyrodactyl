@@ -118,8 +118,8 @@ const DashboardRouter = () => {
                                 'top linear(0,0.006,0.025 2.8%,0.101 6.1%,0.539 18.9%,0.721 25.3%,0.849 31.5%,0.937 38.1%,0.968 41.8%,0.991 45.7%,1.006 50.1%,1.015 55%,1.017 63.9%,1.001) 390ms',
                         }}
                     />
-                    <div className='relative flex flex-row items-center justify-between h-8'>
-                        <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
+                    <div className='relative flex flex-row items-center justify-between h-20'>
+                        <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
                             <Logo uniqueId='desktop-sidebar' />
                             {/* <h1 className='text-[35px] font-semibold leading-[98%] tracking-[-0.05rem] mb-8'>Panel</h1> */}
                         </NavLink>

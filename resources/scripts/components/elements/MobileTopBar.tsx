@@ -51,7 +51,7 @@ const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootA
     return (
         <div className='lg:hidden fixed top-0 left-0 right-0 z-50 bg-[#1a1a1a] border-b border-[#ffffff08] h-16 flex items-center justify-between px-4'>
             {/* Logo */}
-            <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
+            <NavLink to={'/'} className='flex shrink-0 h-12 w-fit'>
                 <Logo uniqueId='mobile-topbar' />
             </NavLink>
 
