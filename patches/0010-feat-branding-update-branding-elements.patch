@@ -1,8 +1,24 @@
-From 3e6b4f4081fc31d55badd13a4b358e3fb59ade12 Mon Sep 17 00:00:00 2001
+From 56dd768eebd8101fa5da30346dfe2cfea1012472 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 20:04:01 +1000
-Subject: [PATCH 10/10] feat(branding): update branding elements
+Subject: [PATCH] feat(branding): update branding elements
 
+---
+ public/favicons/apple-touch-icon.png          | Bin 12435 -> 9749 bytes
+ public/favicons/favicon-96x96.png             | Bin 5560 -> 4011 bytes
+ public/favicons/favicon.ico                   | Bin 15086 -> 9470 bytes
+ public/favicons/favicon.svg                   | Bin 16690 -> 6708 bytes
+ public/favicons/web-app-manifest-192x192.png  | Bin 13287 -> 10593 bytes
+ public/favicons/web-app-manifest-512x512.png  | Bin 62241 -> 30695 bytes
+ .../auth/ForgotPasswordContainer.tsx          |   2 +-
+ .../auth/LoginCheckpointContainer.tsx         |   2 +-
+ .../components/auth/LoginContainer.tsx        |   2 +-
+ .../auth/ResetPasswordContainer.tsx           |   2 +-
+ .../components/elements/MobileTopBar.tsx      |   2 +-
+ .../scripts/components/elements/PyroLogo.tsx  |  50 +++++-------------
+ resources/scripts/routers/DashboardRouter.tsx |   4 +-
+ resources/scripts/routers/ServerRouter.tsx    |   4 +-
+ 14 files changed, 21 insertions(+), 47 deletions(-)
 
 diff --git a/public/favicons/apple-touch-icon.png b/public/favicons/apple-touch-icon.png
 index e834788f8b0192d649fa922b899225b439b4a41e..3ce072cc277638bacc2c6545e1e6b3128bff133f 100644
@@ -3265,6 +3281,71 @@ zh_Hz!mbXg>ylKV$y#60r^?M5#CggARLxH7vI;u$`#J!dR-vysRd4zNe{dYY4eZl_&
 z<v*4A|L3;uQAB3nG#Pm$Xht!;Qhx+zkcB`&-elN2mr-&_4FLbnpEc5Xt%Z&Ff4=It
 AC;$Ke
 
+diff --git a/resources/scripts/components/auth/ForgotPasswordContainer.tsx b/resources/scripts/components/auth/ForgotPasswordContainer.tsx
+index 830970e60..eb190018f 100644
+--- a/resources/scripts/components/auth/ForgotPasswordContainer.tsx
++++ b/resources/scripts/components/auth/ForgotPasswordContainer.tsx
+@@ -67,7 +67,7 @@ const ForgotPasswordContainer = () => {
+                 {({ isSubmitting }) => (
+                     <LoginFormContainer className={`w-full flex`}>
+                         <Link to='/'>
+-                            <div className='flex h-12 mb-4 items-center w-full'>
++                            <div className='flex h-20 mb-4 items-center w-full'>
+                                 <Logo />
+                             </div>
+                         </Link>
+diff --git a/resources/scripts/components/auth/LoginCheckpointContainer.tsx b/resources/scripts/components/auth/LoginCheckpointContainer.tsx
+index cac5c8309..58684d955 100644
+--- a/resources/scripts/components/auth/LoginCheckpointContainer.tsx
++++ b/resources/scripts/components/auth/LoginCheckpointContainer.tsx
+@@ -36,7 +36,7 @@ function LoginCheckpointForm() {
+         <ContentBox className='p-12 bg-[#ffffff09] border-[1px] border-[#ffffff11] shadow-xs rounded-xl'>
+             <LoginFormContainer className={`w-full flex`}>
+                 <Link to='/'>
+-                    <div className='flex h-12 mb-4 items-center w-full'>
++                    <div className='flex h-20 mb-4 items-center w-full'>
+                         <Logo />
+                     </div>
+                 </Link>
+diff --git a/resources/scripts/components/auth/LoginContainer.tsx b/resources/scripts/components/auth/LoginContainer.tsx
+index f6d08310a..596fa75f9 100644
+--- a/resources/scripts/components/auth/LoginContainer.tsx
++++ b/resources/scripts/components/auth/LoginContainer.tsx
+@@ -89,7 +89,7 @@ function LoginContainer() {
+         >
+             {({ isSubmitting }) => (
+                 <LoginFormContainer className={`w-full flex`}>
+-                    <div className='flex h-12 mb-4 items-center w-full'>
++                    <div className='flex h-20 mb-4 items-center w-full'>
+                         <Logo />
+                     </div>
+                     <div aria-hidden className='my-8 bg-[#ffffff33] min-h-[1px]'></div>
+diff --git a/resources/scripts/components/auth/ResetPasswordContainer.tsx b/resources/scripts/components/auth/ResetPasswordContainer.tsx
+index 6a94bc10c..cf2488585 100644
+--- a/resources/scripts/components/auth/ResetPasswordContainer.tsx
++++ b/resources/scripts/components/auth/ResetPasswordContainer.tsx
+@@ -107,7 +107,7 @@ function ResetPasswordContainer() {
+                 {({ isSubmitting }) => (
+                     <LoginFormContainer className={`w-full flex`}>
+                         <Link to='/'>
+-                            <div className='flex h-12 mb-4 items-center w-full'>
++                            <div className='flex h-20 mb-4 items-center w-full'>
+                                 <Logo />
+                             </div>
+                         </Link>
+diff --git a/resources/scripts/components/elements/MobileTopBar.tsx b/resources/scripts/components/elements/MobileTopBar.tsx
+index 61894e0ef..7a4db9e01 100644
+--- a/resources/scripts/components/elements/MobileTopBar.tsx
++++ b/resources/scripts/components/elements/MobileTopBar.tsx
+@@ -51,7 +51,7 @@ const MobileTopBar = ({ onMenuToggle, onTriggerLogout, onSelectAdminPanel, rootA
+     return (
+         <div className='lg:hidden fixed top-0 left-0 right-0 z-50 bg-[#1a1a1a] border-b border-[#ffffff08] h-16 flex items-center justify-between px-4'>
+             {/* Logo */}
+-            <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
++            <NavLink to={'/'} className='flex shrink-0 h-12 w-fit'>
+                 <Logo uniqueId='mobile-topbar' />
+             </NavLink>
+ 
 diff --git a/resources/scripts/components/elements/PyroLogo.tsx b/resources/scripts/components/elements/PyroLogo.tsx
 index 2f7e6bba3..20f7b14c8 100644
 --- a/resources/scripts/components/elements/PyroLogo.tsx
@@ -3330,6 +3411,36 @@ index 2f7e6bba3..20f7b14c8 100644
          </svg>
      );
  };
+diff --git a/resources/scripts/routers/DashboardRouter.tsx b/resources/scripts/routers/DashboardRouter.tsx
+index d6512adc0..6f3d92131 100644
+--- a/resources/scripts/routers/DashboardRouter.tsx
++++ b/resources/scripts/routers/DashboardRouter.tsx
+@@ -118,8 +118,8 @@ const DashboardRouter = () => {
+                                 'top linear(0,0.006,0.025 2.8%,0.101 6.1%,0.539 18.9%,0.721 25.3%,0.849 31.5%,0.937 38.1%,0.968 41.8%,0.991 45.7%,1.006 50.1%,1.015 55%,1.017 63.9%,1.001) 390ms',
+                         }}
+                     />
+-                    <div className='relative flex flex-row items-center justify-between h-8'>
+-                        <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
++                    <div className='relative flex flex-row items-center justify-between h-20'>
++                        <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
+                             <Logo uniqueId='desktop-sidebar' />
+                             {/* <h1 className='text-[35px] font-semibold leading-[98%] tracking-[-0.05rem] mb-8'>Panel</h1> */}
+                         </NavLink>
+diff --git a/resources/scripts/routers/ServerRouter.tsx b/resources/scripts/routers/ServerRouter.tsx
+index 9ab5c5aab..8f3c57dc6 100644
+--- a/resources/scripts/routers/ServerRouter.tsx
++++ b/resources/scripts/routers/ServerRouter.tsx
+@@ -278,8 +278,8 @@ const ServerRouter = () => {
+                     <div className='flex flex-row w-full lg:pt-0 pt-16'>
+                         {/* Desktop Sidebar */}
+                         <MainSidebar className='hidden lg:flex lg:relative lg:shrink-0 w-[300px] bg-[#1a1a1a] flex flex-col h-screen'>
+-                            <div className='flex flex-row items-center justify-between h-8'>
+-                                <NavLink to={'/'} className='flex shrink-0 h-8 w-fit'>
++                            <div className='flex flex-row items-center justify-between h-20'>
++                                <NavLink to={'/'} className='flex shrink-0 h-20 w-fit'>
+                                     <Logo uniqueId='server-desktop-sidebar' />
+                                 </NavLink>
+                                 <DropdownMenu>
 -- 
 2.43.0
 
