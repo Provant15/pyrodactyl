@@ -1,0 +1,32 @@
+From 39532d7444622639f5186fc963a31b225e29e0db Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 22:03:09 +1000
+Subject: [PATCH 14/18] ci(docker): switch to self-hosted runner and arm64-only
+ build
+
+
+diff --git a/.github/workflows/docker-publish.yml b/.github/workflows/docker-publish.yml
+index 295b61402..148bb9d63 100644
+--- a/.github/workflows/docker-publish.yml
++++ b/.github/workflows/docker-publish.yml
+@@ -11,7 +11,7 @@ env:
+ 
+ jobs:
+   build-and-push:
+-    runs-on: ubuntu-latest
++    runs-on: self-hosted
+     permissions:
+       contents: read
+       packages: write
+@@ -46,7 +46,7 @@ jobs:
+         uses: docker/build-push-action@v6
+         with:
+           context: .
+-          platforms: linux/amd64,linux/arm64
++          platforms: linux/arm64
+           push: true
+           tags: ${{ steps.meta.outputs.tags }}
+           labels: ${{ steps.meta.outputs.labels }}
+-- 
+2.43.0
+

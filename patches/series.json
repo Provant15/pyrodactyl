@@ -145,12 +145,82 @@
     },
     {
       "id": "0011",
-      "title": "feat dashboard redesign navigation create button personal submenu",
-      "file": "0011-feat-dashboard-redesign-navigation-create-button-per.patch",
-      "category": "ui",
-      "description": "Add Create Server button to dashboard header (root admin only), move API/SSH keys into sidebar Personal dropdown, replace ellipsis with sidebar nav items for Admin Panel, Personal, and Log Out. Simplify sidebar to Servers + Settings + contextual actions.",
+      "title": "docs add dashboard navigation redesign design",
+      "file": "0011-docs-add-dashboard-navigation-redesign-design.patch",
+      "category": "config",
+      "description": "",
       "author": null,
-      "date": "2026-03-06",
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0012",
+      "title": "docs add dashboard navigation redesign implementatio",
+      "file": "0012-docs-add-dashboard-navigation-redesign-implementatio.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0013",
+      "title": "feat dashboard redesign navigation create button per",
+      "file": "0013-feat-dashboard-redesign-navigation-create-button-per.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0014",
+      "title": "ci docker switch to self hosted runner and arm64 onl",
+      "file": "0014-ci-docker-switch-to-self-hosted-runner-and-arm64-onl.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0015",
+      "title": "fix ui fix sidebar dividers stretching in flex conta",
+      "file": "0015-fix-ui-fix-sidebar-dividers-stretching-in-flex-conta.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0016",
+      "title": "fix branding rename page title from Pyrodactyl to Va",
+      "file": "0016-fix-branding-rename-page-title-from-Pyrodactyl-to-Va.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0017",
+      "title": "fix ui remove flex centering from admin sidebar",
+      "file": "0017-fix-ui-remove-flex-centering-from-admin-sidebar.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
+    },
+    {
+      "id": "0018",
+      "title": "feat add Minecraft players page with RCON integratio",
+      "file": "0018-feat-add-Minecraft-players-page-with-RCON-integratio.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
       "risk": "low"
     }
   ]

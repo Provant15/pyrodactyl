@@ -1,0 +1,45 @@
+From 9f8b78832bfe7422c6d810620c5e32a486f9e491 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Sat, 7 Mar 2026 16:46:47 +1000
+Subject: [PATCH 17/18] fix(ui): remove flex centering from admin sidebar
+
+The grouped CSS selector applied display:flex and align-items:center
+to both .main-header .logo and .main-sidebar. This caused the admin
+sidebar-menu to render vertically centered during page load before
+AdminLTE positioning took over. Move flex properties to .logo only.
+
+diff --git a/public/themes/pterodactyl/css/pterodactyl.css b/public/themes/pterodactyl/css/pterodactyl.css
+index 5d06ab828..f66f653ea 100644
+--- a/public/themes/pterodactyl/css/pterodactyl.css
++++ b/public/themes/pterodactyl/css/pterodactyl.css
+@@ -526,8 +526,14 @@ body {
+ .skin-blue .main-sidebar,
+ .skin-blue .main-header .logo {
+     border-right: 1px solid #222222;
++}
++
++.skin-blue .main-header .logo {
+     display: flex;
+     align-items: center;
++    background-color: #0f0f0f;
++    color: #9aa5b1;
++    transition: background-color .2s;
+ }
+ 
+ .skin-blue .main-header .logo .innerLogo {
+@@ -536,12 +542,6 @@ body {
+     padding: 8px;
+ }
+ 
+-.skin-blue .main-header .logo {
+-    background-color: #0f0f0f;
+-    color: #9aa5b1;
+-    transition: background-color .2s;
+-}
+-
+ .skin-blue .main-header .navbar .sidebar-toggle {
+     color: var(--color-brand);
+     transition: background-color .2s;
+-- 
+2.43.0
+

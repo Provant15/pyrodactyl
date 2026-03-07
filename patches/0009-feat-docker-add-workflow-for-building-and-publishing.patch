@@ -1,16 +1,16 @@
-From 9f5a1c943637b0e0b8ebabf24b05ba791f37014b Mon Sep 17 00:00:00 2001
+From ef1af53a194911982def1fb92f46d2b0334dfc0a Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 20:15:46 +1000
-Subject: [PATCH 09/10] feat(docker): add workflow for building and publishing
+Subject: [PATCH 09/18] feat(docker): add workflow for building and publishing
  Docker images
 
 
 diff --git a/.github/workflows/docker-publish.yml b/.github/workflows/docker-publish.yml
 new file mode 100644
-index 000000000..3246d6a9f
+index 000000000..295b61402
 --- /dev/null
 +++ b/.github/workflows/docker-publish.yml
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,54 @@
 +name: Build and Publish Docker Image
 +
 +on:
@@ -49,6 +49,9 @@ index 000000000..3246d6a9f
 +            type=raw,value=latest
 +            type=sha,prefix=
 +
++      - name: Set up QEMU
++        uses: docker/setup-qemu-action@v3
++
 +      - name: Set up Docker Buildx
 +        uses: docker/setup-buildx-action@v3
 +
@@ -56,6 +59,7 @@ index 000000000..3246d6a9f
 +        uses: docker/build-push-action@v6
 +        with:
 +          context: .
++          platforms: linux/amd64,linux/arm64
 +          push: true
 +          tags: ${{ steps.meta.outputs.tags }}
 +          labels: ${{ steps.meta.outputs.labels }}

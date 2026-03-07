@@ -1,0 +1,81 @@
+From d5070846ef94e5fad0ca73fae992e94ecd9b2d61 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Sat, 7 Mar 2026 15:01:05 +1000
+Subject: [PATCH 15/18] fix(ui): fix sidebar dividers stretching in flex
+ containers
+
+- Change min-h-[1px] to h-[1px] on sidebar separator dividers to prevent
+  flex stretching in DashboardRouter and ServerRouter
+- Scope .innerLogo CSS rule to .main-header .logo only, preventing the
+  admin sidebar logo from expanding during page transitions
+- Update patch 0011 with all fixes to keep patch and source in sync
+
+diff --git a/public/themes/pterodactyl/css/pterodactyl.css b/public/themes/pterodactyl/css/pterodactyl.css
+index d87711a34..5d06ab828 100644
+--- a/public/themes/pterodactyl/css/pterodactyl.css
++++ b/public/themes/pterodactyl/css/pterodactyl.css
+@@ -528,12 +528,12 @@ body {
+     border-right: 1px solid #222222;
+     display: flex;
+     align-items: center;
++}
+ 
+-    .innerLogo {
+-        min-width: 100%;
+-        min-height: 100%;
+-        padding: 8px;
+-    }
++.skin-blue .main-header .logo .innerLogo {
++    min-width: 100%;
++    min-height: 100%;
++    padding: 8px;
+ }
+ 
+ .skin-blue .main-header .logo {
+diff --git a/resources/scripts/routers/DashboardRouter.tsx b/resources/scripts/routers/DashboardRouter.tsx
+index a4060d200..b77f83696 100644
+--- a/resources/scripts/routers/DashboardRouter.tsx
++++ b/resources/scripts/routers/DashboardRouter.tsx
+@@ -113,7 +113,7 @@ const DashboardRouter = () => {
+                             <Logo uniqueId='desktop-sidebar' />
+                         </NavLink>
+                     </div>
+-                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
+                     <ul data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper'>
+                         <NavLink to={'/'} end className='flex flex-row items-center' ref={NavigationHome}>
+                             <House width={22} height={22} fill='currentColor' />
+diff --git a/resources/scripts/routers/ServerRouter.tsx b/resources/scripts/routers/ServerRouter.tsx
+index fdfc4f1e0..41312d31a 100644
+--- a/resources/scripts/routers/ServerRouter.tsx
++++ b/resources/scripts/routers/ServerRouter.tsx
+@@ -282,7 +282,7 @@ const ServerRouter = () => {
+                                     <Logo uniqueId='server-desktop-sidebar' />
+                                 </NavLink>
+                             </div>
+-                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
+                             {/* Highlight */}
+                             <div
+                                 className='absolute bg-brand w-[3px] h-10 left-0 rounded-full pointer-events-none'
+@@ -320,7 +320,7 @@ const ServerRouter = () => {
+                                 ))}
+                             </ul>
+                             <div data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper shrink-0'>
+-                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
+                                 {rootAdmin && (
+                                     <a href={`/admin/servers/view/${serverId}`} target='_blank' rel='noreferrer' className='flex flex-row items-center'>
+                                         <Lock width={22} height={22} fill='currentColor' />
+@@ -350,7 +350,7 @@ const ServerRouter = () => {
+                                 </div>
+                             </div>
+                             <div className='shrink-0'>
+-                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-full'></div>
++                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-full'></div>
+                                 <StatBlock
+                                     title='server'
+                                     className='p-4 bg-[#ffffff09] border-[1px] border-[#ffffff11] shadow-xs rounded-xl text-center hover:cursor-default'
+-- 
+2.43.0
+

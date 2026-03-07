@@ -1,0 +1,450 @@
+From 116c105c02cb7b38be4e0f00f7ab568fcbed9b04 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Fri, 6 Mar 2026 21:41:59 +1000
+Subject: [PATCH 12/18] docs: add dashboard navigation redesign implementation
+ plan
+
+
+diff --git a/docs/plans/2026-03-06-dashboard-nav-redesign-implementation.md b/docs/plans/2026-03-06-dashboard-nav-redesign-implementation.md
+new file mode 100644
+index 000000000..4e365121d
+--- /dev/null
++++ b/docs/plans/2026-03-06-dashboard-nav-redesign-implementation.md
+@@ -0,0 +1,434 @@
++# Dashboard Navigation Redesign - Implementation Plan
++
++> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
++
++**Goal:** Add a "Create Server" button to the dashboard header and move API Keys/SSH Keys into a "Personal" dropdown submenu, decluttering the sidebar to just Servers + Settings.
++
++**Architecture:** Pure frontend changes to React components. No routes, APIs, or backend changes. The sidebar nav items and mobile menu items are moved into Radix UI dropdown submenus already supported by the existing DropdownMenu component.
++
++**Tech Stack:** React, TypeScript, Radix UI (DropdownMenu), @gravity-ui/icons, Tailwind CSS
++
++---
++
++### Task 1: Add "Create Server" button to DashboardContainer
++
++**Files:**
++- Modify: `resources/scripts/components/dashboard/DashboardContainer.tsx:1-150`
++
++**Context:** The dashboard header has a `titleChildren` prop containing a server filter dropdown and a grid/list TabsList toggle. We add a "+" button between them, visible only to root admins.
++
++**Step 1: Add the Plus icon import**
++
++At line 1, add `Plus` to the existing icon import:
++
++```tsx
++import { Bars, ChevronDown, House, LayoutCellsLarge, Plus, SlidersVertical } from '@gravity-ui/icons';
++```
++
++**Step 2: Add the Create Server button between the filter and the TabsList**
++
++Replace the `titleChildren` div (lines 106-150) with:
++
++```tsx
++titleChildren={
++    <div className='flex gap-4'>
++        <DropdownMenu>
++            <DropdownMenuTrigger asChild>
++                <button className='inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#ffffff11] px-3 py-1.5 text-sm font-medium text-[#ffffff88] transition-all hover:bg-[#ffffff23] hover:text-[#ffffff] focus-visible:outline-hidden'>
++                    <SlidersVertical width={20} height={21} color='white' />
++                    <div>{getTitle()}</div>
++                    <ChevronDown width={13} height={13} color='white' />
++                </button>
++            </DropdownMenuTrigger>
++            <DropdownMenuContent className='flex flex-col gap-1 z-99999' sideOffset={8}>
++                <DropdownMenuItem
++                    onSelect={() => setServerViewMode('owner')}
++                    className={serverViewMode === 'owner' ? 'bg-accent/20' : ''}
++                >
++                    Your Servers Only
++                </DropdownMenuItem>
++
++                {rootAdmin && (
++                    <>
++                        <DropdownMenuItem
++                            onSelect={() => setServerViewMode('admin-all')}
++                            className={serverViewMode === 'admin-all' ? 'bg-accent/20' : ''}
++                        >
++                            All Servers (Admin)
++                        </DropdownMenuItem>
++                    </>
++                )}
++                <DropdownMenuItem
++                    onSelect={() => setServerViewMode('all')}
++                    className={serverViewMode === 'all' ? 'bg-accent/20' : ''}
++                >
++                    All Servers
++                </DropdownMenuItem>
++            </DropdownMenuContent>
++        </DropdownMenu>
++
++        {rootAdmin && (
++            <a
++                href='/admin/servers/new'
++                target='_blank'
++                rel='noreferrer'
++                className='inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#ffffff11] px-3 py-1.5 text-sm font-medium text-[#ffffff88] transition-all hover:bg-[#ffffff23] hover:text-[#ffffff] focus-visible:outline-hidden'
++            >
++                <Plus width={18} height={18} color='white' />
++                <span>Create</span>
++            </a>
++        )}
++
++        <TabsList>
++            <TabsTrigger aria-label='View servers in a list layout.' value='list'>
++                <Bars width={18} height={20} color='white' />
++            </TabsTrigger>
++            <TabsTrigger aria-label='View servers in a grid layout.' value='grid'>
++                <LayoutCellsLarge width={20} height={20} color='white' />
++            </TabsTrigger>
++        </TabsList>
++    </div>
++}
++```
++
++**Step 3: Verify visually**
++
++Run: `npm run dev` (or whatever the dev server command is)
++- Log in as root admin: "Create" button should appear between filter and grid/list toggle
++- Style should match the filter button (same classes)
++- Clicking "Create" opens `/admin/servers/new` in a new tab
++
++**Step 4: Commit**
++
++```bash
++git add resources/scripts/components/dashboard/DashboardContainer.tsx
++git commit -m "feat(dashboard): add create server button to dashboard header"
++```
++
++---
++
++### Task 2: Add Personal submenu to DashboardRouter dropdown
++
++**Files:**
++- Modify: `resources/scripts/routers/DashboardRouter.tsx:1-196`
++
++**Context:** The ellipsis dropdown currently has "Admin Panel (Staff)" and "Log Out". We add a "Personal" submenu between them containing SSH Keys and API Keys links. We also need to import the submenu components and navigation icons.
++
++**Step 1: Update imports**
++
++Replace line 1 with (add `Key` and `Lock` icons are already imported, add navigation with `useNavigate`):
++
++```tsx
++import { Ellipsis, Gear, House } from '@gravity-ui/icons';
++```
++
++Note: Remove `Key` and `Lock` from the import since they're no longer used in the sidebar nav items.
++
++Add submenu components to the DropdownMenu import (lines 9-15):
++
++```tsx
++import {
++    DropdownMenu,
++    DropdownMenuContent,
++    DropdownMenuItem,
++    DropdownMenuSeparator,
++    DropdownMenuSub,
++    DropdownMenuSubContent,
++    DropdownMenuSubTrigger,
++    DropdownMenuTrigger,
++} from '@/components/elements/DropdownMenu';
++```
++
++**Step 2: Remove API/SSH refs and simplify calculateTop**
++
++Remove the `NavigationApi` and `NavigationSSH` refs (lines 54-55):
++
++```tsx
++// Delete these two lines:
++const NavigationApi = useRef(null);
++const NavigationSSH = useRef(null);
++```
++
++Replace the `calculateTop` function (lines 57-74) with:
++
++```tsx
++const calculateTop = (pathname: string) => {
++    const ButtonHome = NavigationHome.current;
++    const ButtonSettings = NavigationSettings.current;
++
++    const HighlightOffset: number = 8;
++
++    if (pathname.endsWith(`/`) && ButtonHome != null) return (ButtonHome as any).offsetTop + HighlightOffset;
++    if (pathname.endsWith(`/account`) && ButtonSettings != null)
++        return (ButtonSettings as any).offsetTop + HighlightOffset;
++    return '0';
++};
++```
++
++**Step 3: Replace the dropdown menu content (lines 133-144)**
++
++Replace the `<DropdownMenuContent>` block with the new structure including the Personal submenu:
++
++```tsx
++<DropdownMenuContent className='z-99999' sideOffset={8}>
++    {rootAdmin && (
++        <DropdownMenuItem onSelect={onSelectAdminPanel}>
++            Admin Panel
++            <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs text-white'>
++                Staff
++            </span>
++        </DropdownMenuItem>
++    )}
++    <DropdownMenuSeparator />
++    <DropdownMenuSub>
++        <DropdownMenuSubTrigger>Personal</DropdownMenuSubTrigger>
++        <DropdownMenuSubContent>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
++                SSH Keys
++            </DropdownMenuItem>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
++                API Keys
++            </DropdownMenuItem>
++        </DropdownMenuSubContent>
++    </DropdownMenuSub>
++    <DropdownMenuSeparator />
++    <DropdownMenuItem onSelect={onTriggerLogout}>Log Out</DropdownMenuItem>
++</DropdownMenuContent>
++```
++
++**Step 4: Remove API Keys and SSH Keys from the sidebar nav list**
++
++Replace the `<ul>` block (lines 148-165) with just Servers and Settings:
++
++```tsx
++<ul data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper'>
++    <NavLink to={'/'} end className='flex flex-row items-center' ref={NavigationHome}>
++        <House width={22} height={22} fill='currentColor' />
++        <p>Servers</p>
++    </NavLink>
++    <NavLink to={'/account'} end className='flex flex-row items-center' ref={NavigationSettings}>
++        <Gear width={22} height={22} fill='currentColor' />
++        <p>Settings</p>
++    </NavLink>
++</ul>
++```
++
++**Step 5: Verify visually**
++
++- Sidebar should show only Servers and Settings
++- Highlight indicator should animate between the two items correctly
++- Ellipsis dropdown should show: Admin Panel (Staff) > separator > Personal (with submenu arrow) > separator > Log Out
++- Hovering "Personal" should open submenu with SSH Keys and API Keys
++- Clicking SSH Keys navigates to `/account/ssh`
++
++**Step 6: Commit**
++
++```bash
++git add resources/scripts/routers/DashboardRouter.tsx
++git commit -m "feat(dashboard): move API/SSH keys to Personal submenu, simplify sidebar"
++```
++
++---
++
++### Task 3: Add Personal submenu to ServerRouter dropdown
++
++**Files:**
++- Modify: `resources/scripts/routers/ServerRouter.tsx:285-303`
++
++**Context:** The ServerRouter's ellipsis dropdown has "Manage Server (Staff)" and "Log Out". We add the same Personal submenu here for consistency.
++
++**Step 1: Add submenu imports**
++
++Find the DropdownMenu import block in ServerRouter.tsx and add `DropdownMenuSub`, `DropdownMenuSubContent`, `DropdownMenuSubTrigger` to it (same pattern as Task 2).
++
++**Step 2: Replace the dropdown content block**
++
++Find the `<DropdownMenuContent>` in the server sidebar (around line 291) and replace with:
++
++```tsx
++<DropdownMenuContent className='z-99999 select-none relative' sideOffset={8}>
++    {rootAdmin && (
++        <DropdownMenuItem onSelect={onSelectManageServer}>
++            Manage Server
++            <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs select-none'>
++                Staff
++            </span>
++        </DropdownMenuItem>
++    )}
++    <DropdownMenuSeparator />
++    <DropdownMenuSub>
++        <DropdownMenuSubTrigger>Personal</DropdownMenuSubTrigger>
++        <DropdownMenuSubContent>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
++                SSH Keys
++            </DropdownMenuItem>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
++                API Keys
++            </DropdownMenuItem>
++        </DropdownMenuSubContent>
++    </DropdownMenuSub>
++    <DropdownMenuSeparator />
++    <DropdownMenuItem onSelect={onTriggerLogout}>Log Out</DropdownMenuItem>
++</DropdownMenuContent>
++```
++
++**Step 3: Verify visually**
++
++- Navigate to a server page
++- Ellipsis dropdown should now have: Manage Server (Staff) > separator > Personal submenu > separator > Log Out
++- Personal submenu should work identically to the dashboard version
++
++**Step 4: Commit**
++
++```bash
++git add resources/scripts/routers/ServerRouter.tsx
++git commit -m "feat(server): add Personal submenu to server sidebar dropdown"
++```
++
++---
++
++### Task 4: Add Personal submenu to MobileTopBar dropdown
++
++**Files:**
++- Modify: `resources/scripts/components/elements/MobileTopBar.tsx:1-103`
++
++**Context:** The mobile top bar dropdown mirrors the desktop dropdown. It currently has "Admin Panel (Staff)" and "Log Out". Add the Personal submenu for consistency.
++
++**Step 1: Add submenu imports**
++
++Update the DropdownMenu import (lines 4-10):
++
++```tsx
++import {
++    DropdownMenu,
++    DropdownMenuContent,
++    DropdownMenuItem,
++    DropdownMenuSeparator,
++    DropdownMenuSub,
++    DropdownMenuSubContent,
++    DropdownMenuSubTrigger,
++    DropdownMenuTrigger,
++} from '@/components/elements/DropdownMenu';
++```
++
++**Step 2: Replace dropdown content (lines 75-86)**
++
++```tsx
++<DropdownMenuContent className='z-99999' sideOffset={8}>
++    {rootAdmin && onSelectAdminPanel && (
++        <DropdownMenuItem onSelect={handleAdminPanel}>
++            Admin Panel
++            <span className='ml-2 z-10 rounded-full bg-brand px-2 py-1 text-xs text-white'>
++                Staff
++            </span>
++        </DropdownMenuItem>
++    )}
++    <DropdownMenuSeparator />
++    <DropdownMenuSub>
++        <DropdownMenuSubTrigger>Personal</DropdownMenuSubTrigger>
++        <DropdownMenuSubContent>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/ssh')}>
++                SSH Keys
++            </DropdownMenuItem>
++            <DropdownMenuItem onSelect={() => window.location.assign('/account/api')}>
++                API Keys
++            </DropdownMenuItem>
++        </DropdownMenuSubContent>
++    </DropdownMenuSub>
++    <DropdownMenuSeparator />
++    <DropdownMenuItem onSelect={handleLogout}>Log Out</DropdownMenuItem>
++</DropdownMenuContent>
++```
++
++**Step 3: Verify on mobile viewport**
++
++- Resize browser to mobile width
++- Mobile top bar dropdown should show: Admin Panel > separator > Personal submenu > separator > Log Out
++
++**Step 4: Commit**
++
++```bash
++git add resources/scripts/components/elements/MobileTopBar.tsx
++git commit -m "feat(mobile): add Personal submenu to mobile top bar dropdown"
++```
++
++---
++
++### Task 5: Remove API/SSH Keys from DashboardMobileMenu
++
++**Files:**
++- Modify: `resources/scripts/components/elements/MobileFullScreenMenu.tsx:1-95`
++
++**Context:** The `DashboardMobileMenu` component renders a full-screen nav with 4 items. Remove API Keys and SSH Keys, leaving Servers and Settings.
++
++**Step 1: Update imports**
++
++Replace line 1 - remove `AbbrApi` and `Key` since they're no longer needed:
++
++```tsx
++import { Gear, House, Xmark } from '@gravity-ui/icons';
++```
++
++**Step 2: Remove the two NavigationItems from DashboardMobileMenu**
++
++Replace the `DashboardMobileMenu` component body (lines 78-95):
++
++```tsx
++export const DashboardMobileMenu = ({ isVisible, onClose }: DashboardMobileMenuProps) => {
++    return (
++        <MobileFullScreenMenu isVisible={isVisible} onClose={onClose}>
++            <NavigationItem to='/' icon={House} end onClick={onClose}>
++                Servers
++            </NavigationItem>
++            <NavigationItem to='/account' icon={Gear} end onClick={onClose}>
++                Settings
++            </NavigationItem>
++        </MobileFullScreenMenu>
++    );
++};
++```
++
++**Step 3: Verify on mobile viewport**
++
++- Open mobile menu (hamburger button)
++- Should show only Servers and Settings
++- Both navigate correctly and close the menu
++
++**Step 4: Commit**
++
++```bash
++git add resources/scripts/components/elements/MobileFullScreenMenu.tsx
++git commit -m "feat(mobile): remove API/SSH keys from mobile full-screen menu"
++```
++
++---
++
++### Task 6: Final verification and squash commit
++
++**Step 1: Full smoke test**
++
++Verify all changes work together:
++- [ ] Desktop sidebar: only Servers and Settings, highlight animates correctly
++- [ ] Desktop dropdown (dashboard): Admin Panel > Personal (SSH Keys, API Keys) > Log Out
++- [ ] Desktop dropdown (server view): Manage Server > Personal (SSH Keys, API Keys) > Log Out
++- [ ] Create Server button: visible only as root admin, opens `/admin/servers/new`
++- [ ] Mobile top bar dropdown: same Personal submenu structure
++- [ ] Mobile full-screen menu: only Servers and Settings
++- [ ] Direct URL access: `/account/api` and `/account/ssh` still work
++- [ ] Non-admin user: Create button hidden, Admin Panel hidden
++
++**Step 2: Squash into single feature commit**
++
++```bash
++git rebase -i HEAD~5
++```
++
++Squash all 5 commits into one:
++
++```
++feat(dashboard): redesign navigation - create button + personal submenu
++```
++
++**Step 3: Generate pyro-fork patch**
++
++Create new patch file for the navigation redesign feature and update series.json.
+-- 
+2.43.0
+

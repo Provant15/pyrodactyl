@@ -1,0 +1,1045 @@
+From 14685c4aff45309a65a3a298d6c2877d0cd930a2 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Sat, 7 Mar 2026 17:56:35 +1000
+Subject: [PATCH 18/18] feat: add Minecraft players page with RCON integration
+
+Add a real-time Players page for Minecraft servers backed by the Elytra
+daemon's game bridge. Includes:
+
+- PHP controller proxying player requests to Elytra with egg feature gate
+- Players permission group (list, action, command) in Permission model
+- Egg features in daemon sync payload for bridge configuration
+- React players page with grid/list views and action menus
+- WebSocket subscription for live player join/leave events
+- Egg feature-based navigation gating in desktop and mobile sidebars
+- RCON status badge showing connection state
+
+diff --git a/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php b/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php
+new file mode 100644
+index 000000000..9f028a7cf
+--- /dev/null
++++ b/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php
+@@ -0,0 +1,136 @@
++<?php
++
++namespace Pterodactyl\Http\Controllers\Api\Client\Servers\Elytra;
++
++use Illuminate\Http\JsonResponse;
++use Illuminate\Http\Request;
++use Pterodactyl\Models\Server;
++use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
++use Pterodactyl\Repositories\Wings\DaemonServerRepository;
++use Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException;
++use GuzzleHttp\Exception\TransferException;
++use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
++
++/**
++ * PlayerController proxies player management requests to the Elytra daemon.
++ * All endpoints are gated by the server's egg having the `minecraft_rcon` feature.
++ */
++class PlayerController extends ClientApiController
++{
++    public function __construct(
++        private DaemonServerRepository $repository,
++    ) {
++        parent::__construct();
++    }
++
++    /**
++     * Verify the server's egg supports game bridge features.
++     *
++     * @throws NotFoundHttpException
++     */
++    private function ensureGameBridge(Server $server): void
++    {
++        $features = $server->egg->inherit_features ?? [];
++        if (!in_array('minecraft_rcon', $features)) {
++            throw new NotFoundHttpException('This server does not support player management.');
++        }
++    }
++
++    /**
++     * GET /players - Returns the current player list.
++     */
++    public function index(Request $request, Server $server): JsonResponse
++    {
++        $this->ensureGameBridge($server);
++
++        try {
++            $response = $this->repository->setServer($server)->getHttpClient()->get(
++                sprintf('/api/servers/%s/players', $server->uuid)
++            );
++        } catch (TransferException $exception) {
++            throw new DaemonConnectionException($exception);
++        }
++
++        return new JsonResponse(
++            json_decode($response->getBody()->__toString(), true),
++            $response->getStatusCode()
++        );
++    }
++
++    /**
++     * POST /players/action - Executes an action on a player.
++     * Player name is in the body (not URL) to avoid encoding issues.
++     */
++    public function action(Request $request, Server $server): JsonResponse
++    {
++        $this->ensureGameBridge($server);
++
++        $validated = $request->validate([
++            'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
++            'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
++            'params' => 'array',
++            'params.*' => 'string',
++        ]);
++
++        try {
++            $response = $this->repository->setServer($server)->getHttpClient()->post(
++                sprintf('/api/servers/%s/players/action', $server->uuid),
++                ['json' => $validated]
++            );
++        } catch (TransferException $exception) {
++            throw new DaemonConnectionException($exception);
++        }
++
++        return new JsonResponse(
++            json_decode($response->getBody()->__toString(), true),
++            $response->getStatusCode()
++        );
++    }
++
++    /**
++     * POST /players/command - Sends a raw RCON command.
++     */
++    public function command(Request $request, Server $server): JsonResponse
++    {
++        $this->ensureGameBridge($server);
++
++        $validated = $request->validate([
++            'command' => 'required|string|max:500',
++        ]);
++
++        try {
++            $response = $this->repository->setServer($server)->getHttpClient()->post(
++                sprintf('/api/servers/%s/players/command', $server->uuid),
++                ['json' => $validated]
++            );
++        } catch (TransferException $exception) {
++            throw new DaemonConnectionException($exception);
++        }
++
++        return new JsonResponse(
++            json_decode($response->getBody()->__toString(), true),
++            $response->getStatusCode()
++        );
++    }
++
++    /**
++     * GET /players/status - Returns the game bridge connection status.
++     */
++    public function status(Request $request, Server $server): JsonResponse
++    {
++        $this->ensureGameBridge($server);
++
++        try {
++            $response = $this->repository->setServer($server)->getHttpClient()->get(
++                sprintf('/api/servers/%s/players/status', $server->uuid)
++            );
++        } catch (TransferException $exception) {
++            throw new DaemonConnectionException($exception);
++        }
++
++        return new JsonResponse(
++            json_decode($response->getBody()->__toString(), true),
++            $response->getStatusCode()
++        );
++    }
++}
+diff --git a/app/Models/Permission.php b/app/Models/Permission.php
+index 0d114cea4..aa095b86a 100644
+--- a/app/Models/Permission.php
++++ b/app/Models/Permission.php
+@@ -71,6 +71,10 @@ class Permission extends Model
+ 
+     public const ACTION_MOD_DOWNLOAD = 'mod.download';
+ 
++    public const ACTION_PLAYERS_LIST = 'players.list';
++    public const ACTION_PLAYERS_ACTION = 'players.action';
++    public const ACTION_PLAYERS_COMMAND = 'players.command';
++
+     /**
+      * Should timestamps be used on this model.
+      */
+@@ -226,6 +230,15 @@ class Permission extends Model
+                 'update' => 'Allows a user to update Currently installed mods',
+             ],
+         ],
++
++        'players' => [
++            'description' => 'Permissions that control a user\'s ability to view and manage connected game players.',
++            'keys' => [
++                'list' => 'Allows a user to view the list of players currently connected to the server.',
++                'action' => 'Allows a user to perform actions on players (kick, ban, message, etc.).',
++                'command' => 'Allows a user to send custom RCON commands to the server.',
++            ],
++        ],
+     ];
+ 
+     /**
+diff --git a/app/Services/Servers/ServerConfigurationStructureService.php b/app/Services/Servers/ServerConfigurationStructureService.php
+index 5be55ba66..c3b165e8e 100644
+--- a/app/Services/Servers/ServerConfigurationStructureService.php
++++ b/app/Services/Servers/ServerConfigurationStructureService.php
+@@ -89,6 +89,7 @@ class ServerConfigurationStructureService
+             'egg' => [
+                 'id' => $server->egg->uuid,
+                 'file_denylist' => $server->egg->inherit_file_denylist,
++                'features' => $server->egg->inherit_features ?? [],
+             ],
+         ];
+     }
+diff --git a/resources/scripts/api/server/players.ts b/resources/scripts/api/server/players.ts
+new file mode 100644
+index 000000000..0a995184d
+--- /dev/null
++++ b/resources/scripts/api/server/players.ts
+@@ -0,0 +1,85 @@
++import http from '@/api/http';
++import { getGlobalDaemonType } from '@/api/server/getServer';
++
++/**
++ * Represents a connected game player.
++ */
++export interface Player {
++    name: string;
++    uuid?: string;
++}
++
++/**
++ * Response from the player list endpoint.
++ */
++export interface PlayerList {
++    players: Player[];
++    count: number;
++    max: number;
++}
++
++/**
++ * Result of a player action or command execution.
++ */
++export interface ActionResult {
++    success: boolean;
++    message?: string;
++    response?: string;
++}
++
++/**
++ * Game bridge connection status.
++ */
++export interface BridgeStatus {
++    connected: boolean;
++    mode: 'rcon' | 'fallback';
++    since?: string;
++}
++
++/**
++ * Player action names supported by the game bridge.
++ */
++export type PlayerAction = 'kick' | 'ban' | 'message' | 'smite' | 'teleport' | 'gamemode' | 'op' | 'deop';
++
++/**
++ * Fetches the current player list for the given server.
++ */
++export const getPlayers = async (uuid: string): Promise<PlayerList> => {
++    const { data } = await http.get(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/players`);
++    return data;
++};
++
++/**
++ * Executes a named action on a player.
++ * Player name is in the body (not URL) to avoid encoding issues.
++ */
++export const executePlayerAction = async (
++    uuid: string,
++    player: string,
++    action: PlayerAction,
++    params?: Record<string, string>,
++): Promise<ActionResult> => {
++    const { data } = await http.post(
++        `/api/client/servers/${getGlobalDaemonType()}/${uuid}/players/action`,
++        { player, action, params: params ?? {} },
++    );
++    return data;
++};
++
++/**
++ * Sends a raw RCON command.
++ */
++export const executeCommand = async (uuid: string, command: string): Promise<ActionResult> => {
++    const { data } = await http.post(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/players/command`, {
++        command,
++    });
++    return data;
++};
++
++/**
++ * Fetches the game bridge connection status.
++ */
++export const getBridgeStatus = async (uuid: string): Promise<BridgeStatus> => {
++    const { data } = await http.get(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/players/status`);
++    return data;
++};
+diff --git a/resources/scripts/components/elements/MobileFullScreenMenu.tsx b/resources/scripts/components/elements/MobileFullScreenMenu.tsx
+index 2d6b4ea90..41af7ff13 100644
+--- a/resources/scripts/components/elements/MobileFullScreenMenu.tsx
++++ b/resources/scripts/components/elements/MobileFullScreenMenu.tsx
+@@ -98,10 +98,11 @@ interface ServerMobileNavItemProps {
+  * Mobile navigation item that handles permission and feature limit checks.
+  */
+ const ServerMobileNavItem = ({ route, serverId, onClose }: ServerMobileNavItemProps) => {
+-    const { icon: Icon, name, path, permission, featureLimit, end } = route;
++    const { icon: Icon, name, path, permission, featureLimit, eggFeature, end } = route;
+ 
+-    // Feature limits from server state
++    // Feature limits and egg features from server state
+     const featureLimits = ServerContext.useStoreState((state) => state.server.data?.featureLimits);
++    const eggFeatures = ServerContext.useStoreState((state) => state.server.data?.eggFeatures);
+     const uuid = ServerContext.useStoreState((state) => state.server.data?.uuid);
+ 
+     // State for subdomain support check (only for network route)
+@@ -123,8 +124,11 @@ const ServerMobileNavItem = ({ route, serverId, onClose }: ServerMobileNavItemPr
+         checkSubdomainSupport();
+     }, [featureLimit, uuid]);
+ 
+-    // Check if the item should be visible based on feature limits
++    // Check if the item should be visible based on feature limits and egg features
+     const isVisible = (): boolean => {
++        // Hide if egg feature is required but not present on this server
++        if (eggFeature && !eggFeatures?.includes(eggFeature)) return false;
++
+         if (!featureLimit) return true;
+ 
+         if (featureLimit === 'network') {
+diff --git a/resources/scripts/components/server/ServerSidebarNavItem.tsx b/resources/scripts/components/server/ServerSidebarNavItem.tsx
+index 3db4e5854..ad7487eae 100644
+--- a/resources/scripts/components/server/ServerSidebarNavItem.tsx
++++ b/resources/scripts/components/server/ServerSidebarNavItem.tsx
+@@ -23,10 +23,11 @@ interface ServerSidebarNavItemProps {
+  */
+ const ServerSidebarNavItem = forwardRef<HTMLAnchorElement, ServerSidebarNavItemProps>(
+     ({ route, serverId, onClick }, ref) => {
+-        const { icon: Icon, name, path, permission, featureLimit, end } = route;
++        const { icon: Icon, name, path, permission, featureLimit, eggFeature, end } = route;
+ 
+-        // Feature limits from server state
++        // Feature limits and egg features from server state
+         const featureLimits = ServerContext.useStoreState((state) => state.server.data?.featureLimits);
++        const eggFeatures = ServerContext.useStoreState((state) => state.server.data?.eggFeatures);
+         const uuid = ServerContext.useStoreState((state) => state.server.data?.uuid);
+ 
+         // State for subdomain support check (only for network route)
+@@ -48,8 +49,11 @@ const ServerSidebarNavItem = forwardRef<HTMLAnchorElement, ServerSidebarNavItemP
+             checkSubdomainSupport();
+         }, [featureLimit, uuid]);
+ 
+-        // Check if the item should be visible based on feature limits
++        // Check if the item should be visible based on feature limits and egg features
+         const isVisible = (): boolean => {
++            // Hide if egg feature is required but not present on this server
++            if (eggFeature && !eggFeatures?.includes(eggFeature)) return false;
++
+             if (!featureLimit) return true;
+             if (featureLimits?.[featureLimit] === null) return true;
+             if (featureLimit === 'network') {
+diff --git a/resources/scripts/components/server/events.ts b/resources/scripts/components/server/events.ts
+index 116c0937e..b361ea23c 100644
+--- a/resources/scripts/components/server/events.ts
++++ b/resources/scripts/components/server/events.ts
+@@ -12,10 +12,15 @@ export enum SocketEvent {
+     BACKUP_COMPLETED = 'backup completed',
+     BACKUP_STATUS = 'backup.status',
+     BACKUP_RESTORE_COMPLETED = 'backup restore completed',
++    PLAYER_LIST = 'player list',
++    PLAYER_JOIN = 'player join',
++    PLAYER_LEAVE = 'player leave',
+ }
+ 
+ export enum SocketRequest {
+     SEND_LOGS = 'send logs',
+     SEND_STATS = 'send stats',
+     SET_STATE = 'set state',
++    PLAYERS_SUBSCRIBE = 'players subscribe',
++    PLAYERS_UNSUBSCRIBE = 'players unsubscribe',
+ }
+diff --git a/resources/scripts/components/server/players/PlayerActionMenu.tsx b/resources/scripts/components/server/players/PlayerActionMenu.tsx
+new file mode 100644
+index 000000000..c323c8a0f
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerActionMenu.tsx
+@@ -0,0 +1,87 @@
++import { useState } from 'react';
++import { toast } from 'sonner';
++
++import { type Player, type PlayerAction, executePlayerAction } from '@/api/server/players';
++import PlayerActionModal from '@/components/server/players/PlayerActionModal';
++
++interface Props {
++    player: Player;
++    serverUuid: string;
++}
++
++/** Actions that require a modal for additional input. */
++const modalActions: PlayerAction[] = ['kick', 'ban', 'message', 'teleport', 'gamemode'];
++
++/**
++ * PlayerActionMenu renders a dropdown button with all available player actions.
++ */
++const PlayerActionMenu = ({ player, serverUuid }: Props) => {
++    const [open, setOpen] = useState(false);
++    const [modalAction, setModalAction] = useState<PlayerAction | null>(null);
++
++    const handleAction = async (action: PlayerAction, params?: Record<string, string>) => {
++        try {
++            const result = await executePlayerAction(serverUuid, player.name, action, params);
++            if (result.success) {
++                toast.success(`${action} executed on ${player.name}`);
++            } else {
++                toast.error(result.message || `Failed to ${action} ${player.name}`);
++            }
++        } catch (err: any) {
++            toast.error(err?.message || `Failed to ${action} ${player.name}`);
++        }
++    };
++
++    const handleClick = (action: PlayerAction) => {
++        setOpen(false);
++        if (modalActions.includes(action)) {
++            setModalAction(action);
++        } else {
++            handleAction(action);
++        }
++    };
++
++    return (
++        <div className='relative'>
++            <button
++                onClick={() => setOpen(!open)}
++                className='rounded p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700'
++            >
++                <svg className='h-4 w-4' fill='currentColor' viewBox='0 0 20 20'>
++                    <path d='M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z' />
++                </svg>
++            </button>
++
++            {open && (
++                <>
++                    <div className='fixed inset-0 z-40' onClick={() => setOpen(false)} />
++                    <div className='absolute right-0 z-50 mt-1 w-40 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-xl'>
++                        {(['kick', 'ban', 'message', 'smite', 'teleport', 'gamemode', 'op', 'deop'] as PlayerAction[]).map(
++                            (action) => (
++                                <button
++                                    key={action}
++                                    onClick={() => handleClick(action)}
++                                    className='w-full px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 capitalize'
++                                >
++                                    {action}
++                                </button>
++                            ),
++                        )}
++                    </div>
++                </>
++            )}
++
++            {modalAction && (
++                <PlayerActionModal
++                    playerName={player.name}
++                    action={modalAction}
++                    open={!!modalAction}
++                    onClose={() => setModalAction(null)}
++                    onConfirm={(params) => handleAction(modalAction, params)}
++                />
++            )}
++        </div>
++    );
++};
++
++export default PlayerActionMenu;
+diff --git a/resources/scripts/components/server/players/PlayerActionModal.tsx b/resources/scripts/components/server/players/PlayerActionModal.tsx
+new file mode 100644
+index 000000000..02f46ec1a
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerActionModal.tsx
+@@ -0,0 +1,174 @@
++import { useEffect, useState } from 'react';
++import { type PlayerAction } from '@/api/server/players';
++
++interface Props {
++    playerName: string;
++    action: PlayerAction;
++    open: boolean;
++    onClose: () => void;
++    onConfirm: (params: Record<string, string>) => void;
++}
++
++/** Maps action names to human-readable labels. */
++const actionLabels: Record<PlayerAction, string> = {
++    kick: 'Kick',
++    ban: 'Ban',
++    message: 'Message',
++    smite: 'Smite',
++    teleport: 'Teleport',
++    gamemode: 'Change Gamemode',
++    op: 'Grant Operator',
++    deop: 'Revoke Operator',
++};
++
++/**
++ * PlayerActionModal shows a confirmation dialog with context-specific
++ * input fields for the selected player action.
++ */
++const PlayerActionModal = ({ playerName, action, open, onClose, onConfirm }: Props) => {
++    const [reason, setReason] = useState('');
++    const [message, setMessage] = useState('');
++    const [coords, setCoords] = useState({ x: '', y: '', z: '' });
++    const [target, setTarget] = useState('');
++    const [gamemode, setGamemode] = useState('survival');
++
++    // Reset form state when modal opens with a new action.
++    useEffect(() => {
++        if (open) {
++            setReason('');
++            setMessage('');
++            setCoords({ x: '', y: '', z: '' });
++            setTarget('');
++            setGamemode('survival');
++        }
++    }, [open, action]);
++
++    if (!open) return null;
++
++    const handleConfirm = () => {
++        const params: Record<string, string> = {};
++
++        switch (action) {
++            case 'kick':
++            case 'ban':
++                if (reason) params.reason = reason;
++                break;
++            case 'message':
++                params.message = message;
++                break;
++            case 'teleport':
++                if (target) {
++                    params.target = target;
++                } else {
++                    params.x = coords.x;
++                    params.y = coords.y;
++                    params.z = coords.z;
++                }
++                break;
++            case 'gamemode':
++                params.mode = gamemode;
++                break;
++        }
++
++        onConfirm(params);
++        onClose();
++    };
++
++    return (
++        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50'>
++            <div className='w-full max-w-md rounded-lg bg-zinc-800 border border-zinc-700 p-6'>
++                <h3 className='text-lg font-medium text-zinc-100 mb-4'>
++                    {actionLabels[action]} - {playerName}
++                </h3>
++
++                {(action === 'kick' || action === 'ban') && (
++                    <input
++                        type='text'
++                        placeholder='Reason (optional)'
++                        value={reason}
++                        onChange={(e) => setReason(e.target.value)}
++                        className='w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 mb-3'
++                    />
++                )}
++
++                {action === 'message' && (
++                    <input
++                        type='text'
++                        placeholder='Message'
++                        value={message}
++                        onChange={(e) => setMessage(e.target.value)}
++                        className='w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 mb-3'
++                        autoFocus
++                    />
++                )}
++
++                {action === 'teleport' && (
++                    <div className='space-y-2 mb-3'>
++                        <input
++                            type='text'
++                            placeholder='Target player (or leave empty for coords)'
++                            value={target}
++                            onChange={(e) => setTarget(e.target.value)}
++                            className='w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100'
++                        />
++                        {!target && (
++                            <div className='flex gap-2'>
++                                <input
++                                    type='text'
++                                    placeholder='X'
++                                    value={coords.x}
++                                    onChange={(e) => setCoords({ ...coords, x: e.target.value })}
++                                    className='w-1/3 rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100'
++                                />
++                                <input
++                                    type='text'
++                                    placeholder='Y'
++                                    value={coords.y}
++                                    onChange={(e) => setCoords({ ...coords, y: e.target.value })}
++                                    className='w-1/3 rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100'
++                                />
++                                <input
++                                    type='text'
++                                    placeholder='Z'
++                                    value={coords.z}
++                                    onChange={(e) => setCoords({ ...coords, z: e.target.value })}
++                                    className='w-1/3 rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100'
++                                />
++                            </div>
++                        )}
++                    </div>
++                )}
++
++                {action === 'gamemode' && (
++                    <select
++                        value={gamemode}
++                        onChange={(e) => setGamemode(e.target.value)}
++                        className='w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 mb-3'
++                    >
++                        <option value='survival'>Survival</option>
++                        <option value='creative'>Creative</option>
++                        <option value='adventure'>Adventure</option>
++                        <option value='spectator'>Spectator</option>
++                    </select>
++                )}
++
++                <div className='flex justify-end gap-2 mt-4'>
++                    <button
++                        onClick={onClose}
++                        className='rounded px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100'
++                    >
++                        Cancel
++                    </button>
++                    <button
++                        onClick={handleConfirm}
++                        className='rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500'
++                    >
++                        Confirm
++                    </button>
++                </div>
++            </div>
++        </div>
++    );
++};
++
++export default PlayerActionModal;
+diff --git a/resources/scripts/components/server/players/PlayerCard.tsx b/resources/scripts/components/server/players/PlayerCard.tsx
+new file mode 100644
+index 000000000..57a11ec07
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerCard.tsx
+@@ -0,0 +1,29 @@
++import { type Player } from '@/api/server/players';
++import PlayerActionMenu from '@/components/server/players/PlayerActionMenu';
++
++interface Props {
++    player: Player;
++    serverUuid: string;
++}
++
++/**
++ * PlayerCard renders a single player in the grid view with their
++ * Minecraft skin head, name, and action menu.
++ */
++const PlayerCard = ({ player, serverUuid }: Props) => {
++    const avatarUrl = player.uuid
++        ? `https://mc-heads.net/avatar/${player.uuid}/40`
++        : `https://mc-heads.net/avatar/${player.name}/40`;
++
++    return (
++        <div className='flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 p-3'>
++            <img src={avatarUrl} alt={player.name} className='h-10 w-10 rounded' loading='lazy' />
++            <div className='flex-1 min-w-0'>
++                <p className='text-sm font-medium text-zinc-100 truncate'>{player.name}</p>
++            </div>
++            <PlayerActionMenu player={player} serverUuid={serverUuid} />
++        </div>
++    );
++};
++
++export default PlayerCard;
+diff --git a/resources/scripts/components/server/players/PlayerCardGrid.tsx b/resources/scripts/components/server/players/PlayerCardGrid.tsx
+new file mode 100644
+index 000000000..c28950866
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerCardGrid.tsx
+@@ -0,0 +1,20 @@
++import { type Player } from '@/api/server/players';
++import PlayerCard from '@/components/server/players/PlayerCard';
++
++interface Props {
++    players: Player[];
++    serverUuid: string;
++}
++
++/**
++ * PlayerCardGrid displays players in a responsive card grid layout.
++ */
++const PlayerCardGrid = ({ players, serverUuid }: Props) => (
++    <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'>
++        {players.map((player) => (
++            <PlayerCard key={player.name} player={player} serverUuid={serverUuid} />
++        ))}
++    </div>
++);
++
++export default PlayerCardGrid;
+diff --git a/resources/scripts/components/server/players/PlayerListRow.tsx b/resources/scripts/components/server/players/PlayerListRow.tsx
+new file mode 100644
+index 000000000..0d5981e66
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerListRow.tsx
+@@ -0,0 +1,32 @@
++import { type Player } from '@/api/server/players';
++import PlayerActionMenu from '@/components/server/players/PlayerActionMenu';
++
++interface Props {
++    player: Player;
++    serverUuid: string;
++}
++
++/**
++ * PlayerListRow renders a single player as a table row with skin, name, and actions.
++ */
++const PlayerListRow = ({ player, serverUuid }: Props) => {
++    const avatarUrl = player.uuid
++        ? `https://mc-heads.net/avatar/${player.uuid}/24`
++        : `https://mc-heads.net/avatar/${player.name}/24`;
++
++    return (
++        <tr className='border-b border-zinc-700 last:border-0'>
++            <td className='py-2 px-3'>
++                <div className='flex items-center gap-2'>
++                    <img src={avatarUrl} alt={player.name} className='h-6 w-6 rounded' loading='lazy' />
++                    <span className='text-sm text-zinc-100'>{player.name}</span>
++                </div>
++            </td>
++            <td className='py-2 px-3 text-right'>
++                <PlayerActionMenu player={player} serverUuid={serverUuid} />
++            </td>
++        </tr>
++    );
++};
++
++export default PlayerListRow;
+diff --git a/resources/scripts/components/server/players/PlayerListView.tsx b/resources/scripts/components/server/players/PlayerListView.tsx
+new file mode 100644
+index 000000000..630afe993
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayerListView.tsx
+@@ -0,0 +1,30 @@
++import { type Player } from '@/api/server/players';
++import PlayerListRow from '@/components/server/players/PlayerListRow';
++
++interface Props {
++    players: Player[];
++    serverUuid: string;
++}
++
++/**
++ * PlayerListView displays players in a compact table layout.
++ */
++const PlayerListView = ({ players, serverUuid }: Props) => (
++    <div className='rounded-lg border border-zinc-700 bg-zinc-800 overflow-hidden'>
++        <table className='w-full'>
++            <thead>
++                <tr className='border-b border-zinc-700 text-left text-xs text-zinc-400 uppercase'>
++                    <th className='py-2 px-3'>Player</th>
++                    <th className='py-2 px-3 text-right'>Actions</th>
++                </tr>
++            </thead>
++            <tbody>
++                {players.map((player) => (
++                    <PlayerListRow key={player.name} player={player} serverUuid={serverUuid} />
++                ))}
++            </tbody>
++        </table>
++    </div>
++);
++
++export default PlayerListView;
+diff --git a/resources/scripts/components/server/players/PlayersContainer.tsx b/resources/scripts/components/server/players/PlayersContainer.tsx
+new file mode 100644
+index 000000000..7fe80b1ff
+--- /dev/null
++++ b/resources/scripts/components/server/players/PlayersContainer.tsx
+@@ -0,0 +1,140 @@
++import { Bars, LayoutCellsLarge } from '@gravity-ui/icons';
++import { useCallback, useEffect, useState } from 'react';
++
++import { ServerContext } from '@/state/server';
++import { SocketEvent, SocketRequest } from '@/components/server/events';
++import useWebsocketEvent from '@/plugins/useWebsocketEvent';
++import { getPlayers, getBridgeStatus, type Player, type PlayerList, type BridgeStatus } from '@/api/server/players';
++import PageContentBlock from '@/components/elements/PageContentBlock';
++import { Tabs, TabsList, TabsTrigger } from '@/components/elements/Tabs';
++import PlayerCardGrid from '@/components/server/players/PlayerCardGrid';
++import PlayerListView from '@/components/server/players/PlayerListView';
++import RconStatusBadge from '@/components/server/players/RconStatusBadge';
++
++/**
++ * PlayersContainer is the main page for viewing and managing connected
++ * game players. It fetches the initial player list via REST, then subscribes
++ * to real-time updates via WebSocket RCON diffing.
++ */
++const PlayersContainer = () => {
++    const uuid = ServerContext.useStoreState((state) => state.server.data!.id);
++    const connected = ServerContext.useStoreState((state) => state.socket.connected);
++    const instance = ServerContext.useStoreState((state) => state.socket.instance);
++
++    const [players, setPlayers] = useState<Player[]>([]);
++    const [count, setCount] = useState(0);
++    const [max, setMax] = useState(0);
++    const [loading, setLoading] = useState(true);
++    const [status, setStatus] = useState<BridgeStatus | null>(null);
++    const [view, setView] = useState<string>(() => localStorage.getItem('players_view') || 'grid');
++
++    // Persist view preference.
++    const handleViewChange = useCallback((v: string) => {
++        setView(v);
++        localStorage.setItem('players_view', v);
++    }, []);
++
++    // Initial data fetch.
++    useEffect(() => {
++        setLoading(true);
++        Promise.all([getPlayers(uuid), getBridgeStatus(uuid)])
++            .then(([playerData, statusData]) => {
++                setPlayers(playerData.players);
++                setCount(playerData.count);
++                setMax(playerData.max);
++                setStatus(statusData);
++            })
++            .catch(console.error)
++            .finally(() => setLoading(false));
++    }, [uuid]);
++
++    // Subscribe to player events when websocket is connected.
++    useEffect(() => {
++        if (!connected || !instance) return;
++
++        instance.send(SocketRequest.PLAYERS_SUBSCRIBE);
++
++        return () => {
++            instance.send(SocketRequest.PLAYERS_UNSUBSCRIBE);
++        };
++    }, [connected, instance]);
++
++    // Handle full player list updates.
++    useWebsocketEvent(SocketEvent.PLAYER_LIST, (data: string) => {
++        try {
++            const list: PlayerList = JSON.parse(data);
++            setPlayers(list.players);
++            setCount(list.count);
++            setMax(list.max);
++        } catch {
++            // Ignore malformed events.
++        }
++    });
++
++    // Handle individual join events (optimistic update before next full list).
++    useWebsocketEvent(SocketEvent.PLAYER_JOIN, (data: string) => {
++        try {
++            const player: Player = JSON.parse(data);
++            setPlayers((prev) => {
++                if (prev.some((p) => p.name === player.name)) return prev;
++                return [...prev, player];
++            });
++            setCount((c) => c + 1);
++        } catch {
++            // Ignore malformed events.
++        }
++    });
++
++    // Handle individual leave events.
++    useWebsocketEvent(SocketEvent.PLAYER_LEAVE, (data: string) => {
++        try {
++            const player: Player = JSON.parse(data);
++            setPlayers((prev) => prev.filter((p) => p.name !== player.name));
++            setCount((c) => Math.max(0, c - 1));
++        } catch {
++            // Ignore malformed events.
++        }
++    });
++
++    return (
++        <PageContentBlock title='Players'>
++            <div className='flex items-center justify-between mb-4'>
++                <div className='flex items-center gap-3'>
++                    <h2 className='text-lg font-medium text-zinc-100'>
++                        Players ({count}/{max})
++                    </h2>
++                    {status && <RconStatusBadge status={status} />}
++                </div>
++                <Tabs value={view} onValueChange={handleViewChange}>
++                    <TabsList>
++                        <TabsTrigger aria-label='View players in a list layout.' value='list'>
++                            <Bars />
++                        </TabsTrigger>
++                        <TabsTrigger aria-label='View players in a grid layout.' value='grid'>
++                            <LayoutCellsLarge />
++                        </TabsTrigger>
++                    </TabsList>
++                </Tabs>
++            </div>
++
++            {status?.mode === 'fallback' && (
++                <div className='mb-4 rounded-lg border border-yellow-800 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-300'>
++                    RCON is disabled. Player list and real-time updates are unavailable. Actions are sent but cannot be
++                    confirmed.
++                </div>
++            )}
++
++            {loading ? (
++                <div className='text-center text-zinc-400 py-8'>Loading players...</div>
++            ) : players.length === 0 ? (
++                <div className='text-center text-zinc-400 py-8'>No players online</div>
++            ) : view === 'grid' ? (
++                <PlayerCardGrid players={players} serverUuid={uuid} />
++            ) : (
++                <PlayerListView players={players} serverUuid={uuid} />
++            )}
++        </PageContentBlock>
++    );
++};
++
++export default PlayersContainer;
+diff --git a/resources/scripts/components/server/players/RconStatusBadge.tsx b/resources/scripts/components/server/players/RconStatusBadge.tsx
+new file mode 100644
+index 000000000..35d26ba8f
+--- /dev/null
++++ b/resources/scripts/components/server/players/RconStatusBadge.tsx
+@@ -0,0 +1,36 @@
++import { type BridgeStatus } from '@/api/server/players';
++
++interface Props {
++    status: BridgeStatus;
++}
++
++/**
++ * RconStatusBadge displays the current game bridge connection mode
++ * as a small colored badge.
++ */
++const RconStatusBadge = ({ status }: Props) => {
++    const isRcon = status.mode === 'rcon';
++    const isConnected = status.connected;
++    const label = !isConnected ? 'Disconnected' : isRcon ? 'RCON' : 'Fallback';
++
++    return (
++        <span
++            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
++                !isConnected
++                    ? 'bg-red-900/30 text-red-400 border border-red-800'
++                    : isRcon
++                      ? 'bg-green-900/30 text-green-400 border border-green-800'
++                      : 'bg-yellow-900/30 text-yellow-400 border border-yellow-800'
++            }`}
++        >
++            <span
++                className={`h-1.5 w-1.5 rounded-full ${
++                    !isConnected ? 'bg-red-400' : isRcon ? 'bg-green-400' : 'bg-yellow-400'
++                }`}
++            />
++            {label}
++        </span>
++    );
++};
++
++export default RconStatusBadge;
+diff --git a/resources/scripts/routers/routes.ts b/resources/scripts/routers/routes.ts
+index 767c57a0d..f0748ac6f 100644
+--- a/resources/scripts/routers/routes.ts
++++ b/resources/scripts/routers/routes.ts
+@@ -5,6 +5,7 @@ import {
+     CloudArrowUpIn,
+     Database,
+     FolderOpen,
++    Gamepad,
+     Gear,
+     House,
+     PencilToLine,
+@@ -27,6 +28,7 @@ import ModrinthContainer from '@/components/server/modrinth/ModrinthContainer';
+ import NetworkContainer from '@/components/server/network/NetworkContainer';
+ import ScheduleContainer from '@/components/server/schedules/ScheduleContainer';
+ import SettingsContainer from '@/components/server/settings/SettingsContainer';
++import PlayersContainer from '@/components/server/players/PlayersContainer';
+ import ShellContainer from '@/components/server/shell/ShellContainer';
+ import StartupContainer from '@/components/server/startup/StartupContainer';
+ import CreateUserContainer from '@/components/server/users/CreateUserContainer';
+@@ -76,6 +78,11 @@ export interface ServerRouteDefinition extends RouteDefinition {
+      * Special value 'network' checks both allocations limit AND subdomain support.
+      */
+     featureLimit?: FeatureLimitKey | 'network';
++    /**
++     * Egg feature tag required for this route to appear in navigation.
++     * Checked against the server's eggFeatures string array.
++     */
++    eggFeature?: string;
+     /**
+      * Whether this is a sub-route that shouldn't appear in navigation.
+      */
+@@ -201,6 +208,16 @@ const routes: Routes = {
+             component: EditUserContainer,
+             isSubRoute: true,
+         },
++        {
++            route: 'players/*',
++            path: 'players',
++            permission: 'players.*',
++            name: 'Players',
++            component: PlayersContainer,
++            icon: Gamepad,
++            eggFeature: 'minecraft_rcon',
++            end: true,
++        },
+         {
+             route: 'startup/*',
+             path: 'startup',
+diff --git a/routes/servers/elytra.php b/routes/servers/elytra.php
+index f2ede6fa7..58bda185f 100644
+--- a/routes/servers/elytra.php
++++ b/routes/servers/elytra.php
+@@ -98,6 +98,18 @@ Route::group([
+         Route::delete('/{jobId}', [Elytra\ElytraJobsController::class, 'cancel']);
+     });
+ 
++    // Players API (game bridge)
++    Route::group(['prefix' => '/players'], function () {
++        Route::get('/', [Elytra\PlayerController::class, 'index'])
++            ->middleware('permission:players.list');
++        Route::post('/action', [Elytra\PlayerController::class, 'action'])
++            ->middleware('permission:players.action');
++        Route::post('/command', [Elytra\PlayerController::class, 'command'])
++            ->middleware('permission:players.command');
++        Route::get('/status', [Elytra\PlayerController::class, 'status'])
++            ->middleware('permission:players.list');
++    });
++
+     // Backups API
+     Route::group(['prefix' => '/backups'], function () {
+         Route::get('/', [Elytra\BackupsController::class, 'index']);
+-- 
+2.43.0
+

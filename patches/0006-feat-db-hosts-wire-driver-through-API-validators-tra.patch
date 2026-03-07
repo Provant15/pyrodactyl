@@ -1,7 +1,7 @@
 From 3dff291619f1a6beee32c9353837681723c9ba6c Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 19:47:21 +1000
-Subject: [PATCH 06/10] feat(db-hosts): wire driver through API validators,
+Subject: [PATCH 06/18] feat(db-hosts): wire driver through API validators,
  transformers, and controllers
 
 Make the remote field optional for PostgreSQL database hosts across all

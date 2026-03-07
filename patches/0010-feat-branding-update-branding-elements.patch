@@ -1,26 +1,8 @@
 From 4642f2bf9ba8ceb18efbbf132d4f20ca5767d4a5 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 20:04:01 +1000
-Subject: [PATCH] feat(branding): update branding elements
+Subject: [PATCH 10/18] feat(branding): update branding elements
 
----
- public/favicons/apple-touch-icon.png          | Bin 12435 -> 9749 bytes
- public/favicons/favicon-96x96.png             | Bin 5560 -> 4011 bytes
- public/favicons/favicon.ico                   | Bin 15086 -> 9470 bytes
- public/favicons/favicon.svg                   | Bin 16690 -> 6708 bytes
- public/favicons/web-app-manifest-192x192.png  | Bin 13287 -> 10593 bytes
- public/favicons/web-app-manifest-512x512.png  | Bin 62241 -> 30695 bytes
- .../auth/ForgotPasswordContainer.tsx          |   2 +-
- .../auth/LoginCheckpointContainer.tsx         |   2 +-
- .../components/auth/LoginContainer.tsx        |   2 +-
- .../auth/ResetPasswordContainer.tsx           |   2 +-
- .../components/elements/MobileTopBar.tsx      |   2 +-
- .../scripts/components/elements/PyroLogo.tsx  |  50 +++++-------------
- resources/scripts/routers/DashboardRouter.tsx |   4 +-
- resources/scripts/routers/ServerRouter.tsx    |   4 +-
- resources/views/layouts/admin.blade.php       |  24 +++------
- resources/views/templates/wrapper.blade.php   |   2 +-
- 16 files changed, 28 insertions(+), 66 deletions(-)
 
 diff --git a/public/favicons/apple-touch-icon.png b/public/favicons/apple-touch-icon.png
 index e834788f8b0192d649fa922b899225b439b4a41e..3ce072cc277638bacc2c6545e1e6b3128bff133f 100644
@@ -3348,17 +3330,6 @@ index 61894e0ef..7a4db9e01 100644
                  <Logo uniqueId='mobile-topbar' />
              </NavLink>
  
-diff --git a/resources/scripts/components/elements/PageContentBlock.tsx b/resources/scripts/components/elements/PageContentBlock.tsx
---- a/resources/scripts/components/elements/PageContentBlock.tsx
-+++ b/resources/scripts/components/elements/PageContentBlock.tsx
-@@ -13,7 +13,7 @@ const PageContentBlock: React.FC<PageContentBlockProps> = ({ title, showFlashKey
-     useEffect(() => {
-         if (title) {
--            document.title = title + ' | Pyrodactyl';
-+            document.title = title + ' | Valhalla';
-         }
-     }, [title]);
-
 diff --git a/resources/scripts/components/elements/PyroLogo.tsx b/resources/scripts/components/elements/PyroLogo.tsx
 index 2f7e6bba3..20f7b14c8 100644
 --- a/resources/scripts/components/elements/PyroLogo.tsx
