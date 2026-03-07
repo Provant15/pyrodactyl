@@ -1,4 +1,4 @@
-From 9f8b78832bfe7422c6d810620c5e32a486f9e491 Mon Sep 17 00:00:00 2001
+From 6677c0095e5b6f09ed2b97ceb09babf809817314 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 16:46:47 +1000
 Subject: [PATCH 17/19] fix(ui): remove flex centering from admin sidebar

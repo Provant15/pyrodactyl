@@ -1,4 +1,4 @@
-From d5070846ef94e5fad0ca73fae992e94ecd9b2d61 Mon Sep 17 00:00:00 2001
+From d7a435992f49e39708fe63e400e878f5cd703369 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 15:01:05 +1000
 Subject: [PATCH 15/19] fix(ui): fix sidebar dividers stretching in flex
@@ -32,6 +32,19 @@ index d87711a34..5d06ab828 100644
  }
  
  .skin-blue .main-header .logo {
+diff --git a/resources/scripts/components/elements/MainSidebar.tsx b/resources/scripts/components/elements/MainSidebar.tsx
+index f27a36a3b..b4a81e0da 100644
+--- a/resources/scripts/components/elements/MainSidebar.tsx
++++ b/resources/scripts/components/elements/MainSidebar.tsx
+@@ -19,7 +19,7 @@ const MainSidebar = styled.nav`
+         font-size: 14px;
+ 
+         & > a,
+-        & > div {
++        & > div:not([aria-hidden]) {
+             display: flex;
+             position: relative;
+             padding: 16px 0;
 diff --git a/resources/scripts/routers/DashboardRouter.tsx b/resources/scripts/routers/DashboardRouter.tsx
 index a4060d200..b77f83696 100644
 --- a/resources/scripts/routers/DashboardRouter.tsx

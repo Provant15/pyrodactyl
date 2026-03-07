@@ -1,4 +1,4 @@
-From 14685c4aff45309a65a3a298d6c2877d0cd930a2 Mon Sep 17 00:00:00 2001
+From dce83d81128bba63d9cd2968458d7bae91d932f7 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 17:56:35 +1000
 Subject: [PATCH 18/19] feat: add Minecraft players page with RCON integration
