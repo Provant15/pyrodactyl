@@ -21,6 +21,33 @@ Subject: [PATCH] feat(dashboard): redesign navigation - create button +
  resources/views/layouts/admin.blade.php       |  2 +-
  7 files changed, 106 insertions(+), 80 deletions(-)
 
+diff --git a/public/themes/pterodactyl/css/pterodactyl.css b/public/themes/pterodactyl/css/pterodactyl.css
+--- a/public/themes/pterodactyl/css/pterodactyl.css
++++ b/public/themes/pterodactyl/css/pterodactyl.css
+@@ -524,16 +524,16 @@
+ }
+
+ .skin-blue .main-sidebar,
+ .skin-blue .main-header .logo {
+     border-right: 1px solid #222222;
+     display: flex;
+     align-items: center;
+-
+-    .innerLogo {
+-        min-width: 100%;
+-        min-height: 100%;
+-        padding: 8px;
+-    }
+ }
+
++.skin-blue .main-header .logo .innerLogo {
++    min-width: 100%;
++    min-height: 100%;
++    padding: 8px;
++}
++
+ .skin-blue .main-header .logo {
+
 diff --git a/resources/scripts/components/dashboard/DashboardContainer.tsx b/resources/scripts/components/dashboard/DashboardContainer.tsx
 index bd1d145aa..6bfc029e8 100644
 --- a/resources/scripts/components/dashboard/DashboardContainer.tsx
@@ -219,7 +246,8 @@ index 6f3d92131..a4060d200 100644
 -                            </DropdownMenuContent>
 -                        </DropdownMenu>
                      </div>
-                     <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+-                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
                      <ul data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper'>
 @@ -150,18 +119,37 @@ const DashboardRouter = () => {
                              <House width={22} height={22} fill='currentColor' />
@@ -316,14 +344,15 @@ index 8f3c57dc6..fdfc4f1e0 100644
 -                                    </DropdownMenuContent>
 -                                </DropdownMenu>
                              </div>
-                             <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+-                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
                              {/* Highlight */}
 @@ -339,6 +319,36 @@ const ServerRouter = () => {
                                      />
                                  ))}
                              </ul>
 +                            <div data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper shrink-0'>
-+                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
++                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
 +                                {rootAdmin && (
 +                                    <a href={`/admin/servers/view/${serverId}`} target='_blank' rel='noreferrer' className='flex flex-row items-center'>
 +                                        <Lock width={22} height={22} fill='currentColor' />
@@ -353,7 +382,8 @@ index 8f3c57dc6..fdfc4f1e0 100644
 +                                </div>
 +                            </div>
                              <div className='shrink-0'>
-                                 <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-full'></div>
+-                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-full'></div>
++                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-full'></div>
                                  <StatBlock
 diff --git a/resources/views/layouts/admin.blade.php b/resources/views/layouts/admin.blade.php
 index 83023a474..c7c854c1c 100644

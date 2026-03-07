@@ -113,7 +113,7 @@ const DashboardRouter = () => {
                             <Logo uniqueId='desktop-sidebar' />
                         </NavLink>
                     </div>
-                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+                    <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
                     <ul data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper'>
                         <NavLink to={'/'} end className='flex flex-row items-center' ref={NavigationHome}>
                             <House width={22} height={22} fill='currentColor' />

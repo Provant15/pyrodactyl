@@ -19,7 +19,7 @@ const MainSidebar = styled.nav`
         font-size: 14px;
 
         & > a,
-        & > div {
+        & > div:not([aria-hidden]) {
             display: flex;
             position: relative;
             padding: 16px 0;

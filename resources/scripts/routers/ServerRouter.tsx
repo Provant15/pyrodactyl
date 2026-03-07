@@ -282,7 +282,7 @@ const ServerRouter = () => {
                                     <Logo uniqueId='server-desktop-sidebar' />
                                 </NavLink>
                             </div>
-                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+                            <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
                             {/* Highlight */}
                             <div
                                 className='absolute bg-brand w-[3px] h-10 left-0 rounded-full pointer-events-none'
@@ -320,7 +320,7 @@ const ServerRouter = () => {
                                 ))}
                             </ul>
                             <div data-pyro-subnav-routes-wrapper='' className='pyro-subnav-routes-wrapper shrink-0'>
-                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] min-h-[1px] w-6'></div>
+                                <div aria-hidden className='mt-4 mb-4 bg-[#ffffff33] h-[1px] w-6'></div>
                                 {rootAdmin && (
                                     <a href={`/admin/servers/view/${serverId}`} target='_blank' rel='noreferrer' className='flex flex-row items-center'>
                                         <Lock width={22} height={22} fill='currentColor' />
@@ -350,7 +350,7 @@ const ServerRouter = () => {
                                 </div>
                             </div>
                             <div className='shrink-0'>
-                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] min-h-[1px] w-full'></div>
+                                <div aria-hidden className='mt-8 mb-4 bg-[#ffffff33] h-[1px] w-full'></div>
                                 <StatBlock
                                     title='server'
                                     className='p-4 bg-[#ffffff09] border-[1px] border-[#ffffff11] shadow-xs rounded-xl text-center hover:cursor-default'
