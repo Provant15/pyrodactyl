@@ -71,6 +71,10 @@ class Permission extends Model
 
     public const ACTION_MOD_DOWNLOAD = 'mod.download';
 
+    public const ACTION_PLAYERS_LIST = 'players.list';
+    public const ACTION_PLAYERS_ACTION = 'players.action';
+    public const ACTION_PLAYERS_COMMAND = 'players.command';
+
     /**
      * Should timestamps be used on this model.
      */
@@ -224,6 +228,15 @@ class Permission extends Model
                 'download' => 'Allows a user to download mods to the server',
                 'resolver' => 'Allows a user to access the Dependency Resolver',
                 'update' => 'Allows a user to update Currently installed mods',
+            ],
+        ],
+
+        'players' => [
+            'description' => 'Permissions that control a user\'s ability to view and manage connected game players.',
+            'keys' => [
+                'list' => 'Allows a user to view the list of players currently connected to the server.',
+                'action' => 'Allows a user to perform actions on players (kick, ban, message, etc.).',
+                'command' => 'Allows a user to send custom RCON commands to the server.',
             ],
         ],
     ];

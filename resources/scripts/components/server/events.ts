@@ -12,10 +12,15 @@ export enum SocketEvent {
     BACKUP_COMPLETED = 'backup completed',
     BACKUP_STATUS = 'backup.status',
     BACKUP_RESTORE_COMPLETED = 'backup restore completed',
+    PLAYER_LIST = 'player list',
+    PLAYER_JOIN = 'player join',
+    PLAYER_LEAVE = 'player leave',
 }
 
 export enum SocketRequest {
     SEND_LOGS = 'send logs',
     SEND_STATS = 'send stats',
     SET_STATE = 'set state',
+    PLAYERS_SUBSCRIBE = 'players subscribe',
+    PLAYERS_UNSUBSCRIBE = 'players unsubscribe',
 }

@@ -23,10 +23,11 @@ interface ServerSidebarNavItemProps {
  */
 const ServerSidebarNavItem = forwardRef<HTMLAnchorElement, ServerSidebarNavItemProps>(
     ({ route, serverId, onClick }, ref) => {
-        const { icon: Icon, name, path, permission, featureLimit, end } = route;
+        const { icon: Icon, name, path, permission, featureLimit, eggFeature, end } = route;
 
-        // Feature limits from server state
+        // Feature limits and egg features from server state
         const featureLimits = ServerContext.useStoreState((state) => state.server.data?.featureLimits);
+        const eggFeatures = ServerContext.useStoreState((state) => state.server.data?.eggFeatures);
         const uuid = ServerContext.useStoreState((state) => state.server.data?.uuid);
 
         // State for subdomain support check (only for network route)
@@ -48,8 +49,11 @@ const ServerSidebarNavItem = forwardRef<HTMLAnchorElement, ServerSidebarNavItemP
             checkSubdomainSupport();
         }, [featureLimit, uuid]);
 
-        // Check if the item should be visible based on feature limits
+        // Check if the item should be visible based on feature limits and egg features
         const isVisible = (): boolean => {
+            // Hide if egg feature is required but not present on this server
+            if (eggFeature && !eggFeatures?.includes(eggFeature)) return false;
+
             if (!featureLimit) return true;
             if (featureLimits?.[featureLimit] === null) return true;
             if (featureLimit === 'network') {

@@ -98,6 +98,18 @@ Route::group([
         Route::delete('/{jobId}', [Elytra\ElytraJobsController::class, 'cancel']);
     });
 
+    // Players API (game bridge)
+    Route::group(['prefix' => '/players'], function () {
+        Route::get('/', [Elytra\PlayerController::class, 'index'])
+            ->middleware('permission:players.list');
+        Route::post('/action', [Elytra\PlayerController::class, 'action'])
+            ->middleware('permission:players.action');
+        Route::post('/command', [Elytra\PlayerController::class, 'command'])
+            ->middleware('permission:players.command');
+        Route::get('/status', [Elytra\PlayerController::class, 'status'])
+            ->middleware('permission:players.list');
+    });
+
     // Backups API
     Route::group(['prefix' => '/backups'], function () {
         Route::get('/', [Elytra\BackupsController::class, 'index']);

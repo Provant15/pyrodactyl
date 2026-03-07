@@ -5,6 +5,7 @@ import {
     CloudArrowUpIn,
     Database,
     FolderOpen,
+    Gamepad,
     Gear,
     House,
     PencilToLine,
@@ -27,6 +28,7 @@ import ModrinthContainer from '@/components/server/modrinth/ModrinthContainer';
 import NetworkContainer from '@/components/server/network/NetworkContainer';
 import ScheduleContainer from '@/components/server/schedules/ScheduleContainer';
 import SettingsContainer from '@/components/server/settings/SettingsContainer';
+import PlayersContainer from '@/components/server/players/PlayersContainer';
 import ShellContainer from '@/components/server/shell/ShellContainer';
 import StartupContainer from '@/components/server/startup/StartupContainer';
 import CreateUserContainer from '@/components/server/users/CreateUserContainer';
@@ -76,6 +78,11 @@ export interface ServerRouteDefinition extends RouteDefinition {
      * Special value 'network' checks both allocations limit AND subdomain support.
      */
     featureLimit?: FeatureLimitKey | 'network';
+    /**
+     * Egg feature tag required for this route to appear in navigation.
+     * Checked against the server's eggFeatures string array.
+     */
+    eggFeature?: string;
     /**
      * Whether this is a sub-route that shouldn't appear in navigation.
      */
@@ -200,6 +207,16 @@ const routes: Routes = {
             name: undefined,
             component: EditUserContainer,
             isSubRoute: true,
+        },
+        {
+            route: 'players/*',
+            path: 'players',
+            permission: 'players.*',
+            name: 'Players',
+            component: PlayersContainer,
+            icon: Gamepad,
+            eggFeature: 'minecraft_rcon',
+            end: true,
         },
         {
             route: 'startup/*',

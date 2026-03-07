@@ -98,10 +98,11 @@ interface ServerMobileNavItemProps {
  * Mobile navigation item that handles permission and feature limit checks.
  */
 const ServerMobileNavItem = ({ route, serverId, onClose }: ServerMobileNavItemProps) => {
-    const { icon: Icon, name, path, permission, featureLimit, end } = route;
+    const { icon: Icon, name, path, permission, featureLimit, eggFeature, end } = route;
 
-    // Feature limits from server state
+    // Feature limits and egg features from server state
     const featureLimits = ServerContext.useStoreState((state) => state.server.data?.featureLimits);
+    const eggFeatures = ServerContext.useStoreState((state) => state.server.data?.eggFeatures);
     const uuid = ServerContext.useStoreState((state) => state.server.data?.uuid);
 
     // State for subdomain support check (only for network route)
@@ -123,8 +124,11 @@ const ServerMobileNavItem = ({ route, serverId, onClose }: ServerMobileNavItemPr
         checkSubdomainSupport();
     }, [featureLimit, uuid]);
 
-    // Check if the item should be visible based on feature limits
+    // Check if the item should be visible based on feature limits and egg features
     const isVisible = (): boolean => {
+        // Hide if egg feature is required but not present on this server
+        if (eggFeature && !eggFeatures?.includes(eggFeature)) return false;
+
         if (!featureLimit) return true;
 
         if (featureLimit === 'network') {
