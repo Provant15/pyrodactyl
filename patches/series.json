@@ -222,6 +222,16 @@
       "author": null,
       "date": "2026-03-07",
       "risk": "low"
+    },
+    {
+      "id": "0019",
+      "title": "fix replace Gamepad icon with CrownDiamond",
+      "file": "0019-fix-replace-Gamepad-icon-with-CrownDiamond.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-07",
+      "risk": "low"
     }
   ]
 }

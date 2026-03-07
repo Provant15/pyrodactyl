@@ -1,7 +1,7 @@
 From 9f8b78832bfe7422c6d810620c5e32a486f9e491 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 16:46:47 +1000
-Subject: [PATCH 17/18] fix(ui): remove flex centering from admin sidebar
+Subject: [PATCH 17/19] fix(ui): remove flex centering from admin sidebar
 
 The grouped CSS selector applied display:flex and align-items:center
 to both .main-header .logo and .main-sidebar. This caused the admin

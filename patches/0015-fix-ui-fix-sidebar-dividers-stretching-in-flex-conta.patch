@@ -1,7 +1,7 @@
 From d5070846ef94e5fad0ca73fae992e94ecd9b2d61 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 15:01:05 +1000
-Subject: [PATCH 15/18] fix(ui): fix sidebar dividers stretching in flex
+Subject: [PATCH 15/19] fix(ui): fix sidebar dividers stretching in flex
  containers
 
 - Change min-h-[1px] to h-[1px] on sidebar separator dividers to prevent

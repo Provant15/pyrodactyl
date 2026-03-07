@@ -1,0 +1,33 @@
+From ae0246d38430287ca7864840493bf24165c09f09 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Sat, 7 Mar 2026 20:21:38 +1000
+Subject: [PATCH 19/19] fix: replace Gamepad icon with CrownDiamond
+
+Gamepad is not exported by @gravity-ui/icons@2.16.0, causing Vite
+build failure. Use CrownDiamond which exists in the package.
+
+diff --git a/resources/scripts/routers/routes.ts b/resources/scripts/routers/routes.ts
+index f0748ac6f..fb114c760 100644
+--- a/resources/scripts/routers/routes.ts
++++ b/resources/scripts/routers/routes.ts
+@@ -5,7 +5,7 @@ import {
+     CloudArrowUpIn,
+     Database,
+     FolderOpen,
+-    Gamepad,
++    CrownDiamond,
+     Gear,
+     House,
+     PencilToLine,
+@@ -214,7 +214,7 @@ const routes: Routes = {
+             permission: 'players.*',
+             name: 'Players',
+             component: PlayersContainer,
+-            icon: Gamepad,
++            icon: CrownDiamond,
+             eggFeature: 'minecraft_rcon',
+             end: true,
+         },
+-- 
+2.43.0
+
