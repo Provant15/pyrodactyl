@@ -3348,6 +3348,17 @@ index 61894e0ef..7a4db9e01 100644
                  <Logo uniqueId='mobile-topbar' />
              </NavLink>
  
+diff --git a/resources/scripts/components/elements/PageContentBlock.tsx b/resources/scripts/components/elements/PageContentBlock.tsx
+--- a/resources/scripts/components/elements/PageContentBlock.tsx
++++ b/resources/scripts/components/elements/PageContentBlock.tsx
+@@ -13,7 +13,7 @@ const PageContentBlock: React.FC<PageContentBlockProps> = ({ title, showFlashKey
+     useEffect(() => {
+         if (title) {
+-            document.title = title + ' | Pyrodactyl';
++            document.title = title + ' | Valhalla';
+         }
+     }, [title]);
+
 diff --git a/resources/scripts/components/elements/PyroLogo.tsx b/resources/scripts/components/elements/PyroLogo.tsx
 index 2f7e6bba3..20f7b14c8 100644
 --- a/resources/scripts/components/elements/PyroLogo.tsx
