@@ -526,20 +526,20 @@ body {
 .skin-blue .main-sidebar,
 .skin-blue .main-header .logo {
     border-right: 1px solid #222222;
+}
+
+.skin-blue .main-header .logo {
     display: flex;
     align-items: center;
+    background-color: #0f0f0f;
+    color: #9aa5b1;
+    transition: background-color .2s;
 }
 
 .skin-blue .main-header .logo .innerLogo {
     min-width: 100%;
     min-height: 100%;
     padding: 8px;
-}
-
-.skin-blue .main-header .logo {
-    background-color: #0f0f0f;
-    color: #9aa5b1;
-    transition: background-color .2s;
 }
 
 .skin-blue .main-header .navbar .sidebar-toggle {
