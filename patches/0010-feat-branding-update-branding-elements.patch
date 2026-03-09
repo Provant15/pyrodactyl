@@ -1,7 +1,7 @@
 From 4642f2bf9ba8ceb18efbbf132d4f20ca5767d4a5 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 20:04:01 +1000
-Subject: [PATCH 10/21] feat(branding): update branding elements
+Subject: [PATCH 10/22] feat(branding): update branding elements
 
 
 diff --git a/public/favicons/apple-touch-icon.png b/public/favicons/apple-touch-icon.png

@@ -1,7 +1,7 @@
 From dce83d81128bba63d9cd2968458d7bae91d932f7 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 17:56:35 +1000
-Subject: [PATCH 18/21] feat: add Minecraft players page with RCON integration
+Subject: [PATCH 18/22] feat: add Minecraft players page with RCON integration
 
 Add a real-time Players page for Minecraft servers backed by the Elytra
 daemon's game bridge. Includes:

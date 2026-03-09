@@ -252,6 +252,16 @@
       "author": null,
       "date": "2026-03-09",
       "risk": "low"
+    },
+    {
+      "id": "0022",
+      "title": "fix use Radix DropdownMenu portal for player action ",
+      "file": "0022-fix-use-Radix-DropdownMenu-portal-for-player-action-.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-09",
+      "risk": "low"
     }
   ]
 }
