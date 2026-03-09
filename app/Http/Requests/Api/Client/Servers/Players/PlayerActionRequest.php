@@ -20,7 +20,7 @@ class PlayerActionRequest extends ClientApiRequest
         return [
             'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
             'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
-            'params' => 'array',
+            'params' => 'sometimes|array',
             'params.*' => 'string',
         ];
     }

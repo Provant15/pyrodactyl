@@ -61,7 +61,7 @@ export const executePlayerAction = async (
 ): Promise<ActionResult> => {
     const { data } = await http.post(
         `/api/client/servers/${getGlobalDaemonType()}/${uuid}/players/action`,
-        { player, action, params: params ?? {} },
+        { player, action, ...(params && Object.keys(params).length > 0 ? { params } : {}) },
     );
     return data;
 };
