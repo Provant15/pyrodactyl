@@ -14,7 +14,8 @@
         "pid_limit",
         "plugin/paper",
         "mclogs",
-        "subdomain_minecraft"
+        "subdomain_minecraft",
+        "minecraft_rcon"
     ],
     "docker_images": {
         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
