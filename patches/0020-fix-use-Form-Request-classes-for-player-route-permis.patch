@@ -1,7 +1,7 @@
 From 79b12aadb226244574993d34a2298fbbaf4fe1fa Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Mon, 9 Mar 2026 19:59:38 +1000
-Subject: [PATCH 20/22] fix: use Form Request classes for player route
+Subject: [PATCH 20/23] fix: use Form Request classes for player route
  permissions
 
 Replace invalid 'permission:...' route middleware with proper

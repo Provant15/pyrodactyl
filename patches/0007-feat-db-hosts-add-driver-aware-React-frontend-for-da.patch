@@ -1,7 +1,7 @@
 From e6ff0b963c8d38d7dc6469c469d4b39ce4457bb2 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 19:49:57 +1000
-Subject: [PATCH 07/22] feat(db-hosts): add driver-aware React frontend for
+Subject: [PATCH 07/23] feat(db-hosts): add driver-aware React frontend for
  database management
 
 

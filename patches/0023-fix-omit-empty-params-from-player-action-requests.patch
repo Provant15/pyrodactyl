@@ -1,0 +1,39 @@
+From 88ffcdc5eb19cbf8a6c5191b718c42343da86020 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Mon, 9 Mar 2026 21:41:44 +1000
+Subject: [PATCH 23/23] fix: omit empty params from player action requests
+
+PHP decodes JSON {} as stdClass, which fails Laravel's 'array'
+validation rule. Only include params in the request body when it
+has values, and mark the backend rule as 'sometimes' for defense
+in depth.
+
+diff --git a/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php b/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php
+index 3f5a219ee..d3837fcf0 100644
+--- a/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php
++++ b/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php
+@@ -20,7 +20,7 @@ class PlayerActionRequest extends ClientApiRequest
+         return [
+             'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
+             'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
+-            'params' => 'array',
++            'params' => 'sometimes|array',
+             'params.*' => 'string',
+         ];
+     }
+diff --git a/resources/scripts/api/server/players.ts b/resources/scripts/api/server/players.ts
+index 0a995184d..9413f25f7 100644
+--- a/resources/scripts/api/server/players.ts
++++ b/resources/scripts/api/server/players.ts
+@@ -61,7 +61,7 @@ export const executePlayerAction = async (
+ ): Promise<ActionResult> => {
+     const { data } = await http.post(
+         `/api/client/servers/${getGlobalDaemonType()}/${uuid}/players/action`,
+-        { player, action, params: params ?? {} },
++        { player, action, ...(params && Object.keys(params).length > 0 ? { params } : {}) },
+     );
+     return data;
+ };
+-- 
+2.43.0
+

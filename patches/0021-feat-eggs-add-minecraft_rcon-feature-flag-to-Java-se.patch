@@ -1,7 +1,7 @@
 From 33b225893e5f716f16e464ce94f26b90ebc7cf71 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Mon, 9 Mar 2026 20:25:21 +1000
-Subject: [PATCH 21/22] feat(eggs): add minecraft_rcon feature flag to Java
+Subject: [PATCH 21/23] feat(eggs): add minecraft_rcon feature flag to Java
  server eggs
 
 Enables the Players page for all RCON-capable Minecraft server

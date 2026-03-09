@@ -262,6 +262,16 @@
       "author": null,
       "date": "2026-03-09",
       "risk": "low"
+    },
+    {
+      "id": "0023",
+      "title": "fix omit empty params from player action requests",
+      "file": "0023-fix-omit-empty-params-from-player-action-requests.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-09",
+      "risk": "low"
     }
   ]
 }

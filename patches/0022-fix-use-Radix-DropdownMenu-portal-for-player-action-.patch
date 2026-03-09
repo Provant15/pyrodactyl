@@ -1,7 +1,7 @@
 From ea1ddbb73f9bb6f3c79e2ff0ecdb7d9f11ac0907 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Mon, 9 Mar 2026 21:18:57 +1000
-Subject: [PATCH 22/22] fix: use Radix DropdownMenu portal for player action
+Subject: [PATCH 22/23] fix: use Radix DropdownMenu portal for player action
  menu
 
 Replace custom absolute-positioned dropdown with Radix DropdownMenu
