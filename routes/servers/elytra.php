@@ -100,14 +100,10 @@ Route::group([
 
     // Players API (game bridge)
     Route::group(['prefix' => '/players'], function () {
-        Route::get('/', [Elytra\PlayerController::class, 'index'])
-            ->middleware('permission:players.list');
-        Route::post('/action', [Elytra\PlayerController::class, 'action'])
-            ->middleware('permission:players.action');
-        Route::post('/command', [Elytra\PlayerController::class, 'command'])
-            ->middleware('permission:players.command');
-        Route::get('/status', [Elytra\PlayerController::class, 'status'])
-            ->middleware('permission:players.list');
+        Route::get('/', [Elytra\PlayerController::class, 'index']);
+        Route::post('/action', [Elytra\PlayerController::class, 'action']);
+        Route::post('/command', [Elytra\PlayerController::class, 'command']);
+        Route::get('/status', [Elytra\PlayerController::class, 'status']);
     });
 
     // Backups API

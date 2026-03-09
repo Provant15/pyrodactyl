@@ -3,9 +3,11 @@
 namespace Pterodactyl\Http\Controllers\Api\Client\Servers\Elytra;
 
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
+use Pterodactyl\Http\Requests\Api\Client\Servers\Players\GetPlayersRequest;
+use Pterodactyl\Http\Requests\Api\Client\Servers\Players\PlayerActionRequest;
+use Pterodactyl\Http\Requests\Api\Client\Servers\Players\PlayerCommandRequest;
 use Pterodactyl\Repositories\Wings\DaemonServerRepository;
 use Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException;
 use GuzzleHttp\Exception\TransferException;
@@ -39,7 +41,7 @@ class PlayerController extends ClientApiController
     /**
      * GET /players - Returns the current player list.
      */
-    public function index(Request $request, Server $server): JsonResponse
+    public function index(GetPlayersRequest $request, Server $server): JsonResponse
     {
         $this->ensureGameBridge($server);
 
@@ -61,21 +63,14 @@ class PlayerController extends ClientApiController
      * POST /players/action - Executes an action on a player.
      * Player name is in the body (not URL) to avoid encoding issues.
      */
-    public function action(Request $request, Server $server): JsonResponse
+    public function action(PlayerActionRequest $request, Server $server): JsonResponse
     {
         $this->ensureGameBridge($server);
-
-        $validated = $request->validate([
-            'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
-            'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
-            'params' => 'array',
-            'params.*' => 'string',
-        ]);
 
         try {
             $response = $this->repository->setServer($server)->getHttpClient()->post(
                 sprintf('/api/servers/%s/players/action', $server->uuid),
-                ['json' => $validated]
+                ['json' => $request->validated()]
             );
         } catch (TransferException $exception) {
             throw new DaemonConnectionException($exception);
@@ -90,18 +85,14 @@ class PlayerController extends ClientApiController
     /**
      * POST /players/command - Sends a raw RCON command.
      */
-    public function command(Request $request, Server $server): JsonResponse
+    public function command(PlayerCommandRequest $request, Server $server): JsonResponse
     {
         $this->ensureGameBridge($server);
-
-        $validated = $request->validate([
-            'command' => 'required|string|max:500',
-        ]);
 
         try {
             $response = $this->repository->setServer($server)->getHttpClient()->post(
                 sprintf('/api/servers/%s/players/command', $server->uuid),
-                ['json' => $validated]
+                ['json' => $request->validated()]
             );
         } catch (TransferException $exception) {
             throw new DaemonConnectionException($exception);
@@ -116,7 +107,7 @@ class PlayerController extends ClientApiController
     /**
      * GET /players/status - Returns the game bridge connection status.
      */
-    public function status(Request $request, Server $server): JsonResponse
+    public function status(GetPlayersRequest $request, Server $server): JsonResponse
     {
         $this->ensureGameBridge($server);
 
