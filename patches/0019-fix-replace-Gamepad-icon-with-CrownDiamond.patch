@@ -1,7 +1,7 @@
 From a2ed12e11b86bb02b12298e01eb51584284a3c58 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 20:21:38 +1000
-Subject: [PATCH 19/19] fix: replace Gamepad icon with CrownDiamond
+Subject: [PATCH 19/21] fix: replace Gamepad icon with CrownDiamond
 
 Gamepad is not exported by @gravity-ui/icons@2.16.0, causing Vite
 build failure. Use CrownDiamond which exists in the package.

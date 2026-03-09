@@ -1,7 +1,7 @@
 From 8b29c461018dcf21e73a22ef8055f2d50d19c958 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Sat, 7 Mar 2026 16:27:46 +1000
-Subject: [PATCH 16/19] fix(branding): rename page title from Pyrodactyl to
+Subject: [PATCH 16/21] fix(branding): rename page title from Pyrodactyl to
  Valhalla
 
 Update PageContentBlock.tsx document title suffix and add to

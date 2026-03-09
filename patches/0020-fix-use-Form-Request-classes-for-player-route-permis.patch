@@ -1,0 +1,201 @@
+From 79b12aadb226244574993d34a2298fbbaf4fe1fa Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Mon, 9 Mar 2026 19:59:38 +1000
+Subject: [PATCH 20/21] fix: use Form Request classes for player route
+ permissions
+
+Replace invalid 'permission:...' route middleware with proper
+Form Request classes following Pyrodactyl's established pattern.
+
+diff --git a/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php b/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php
+index 9f028a7cf..882f67f6c 100644
+--- a/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php
++++ b/app/Http/Controllers/Api/Client/Servers/Elytra/PlayerController.php
+@@ -3,9 +3,11 @@
+ namespace Pterodactyl\Http\Controllers\Api\Client\Servers\Elytra;
+ 
+ use Illuminate\Http\JsonResponse;
+-use Illuminate\Http\Request;
+ use Pterodactyl\Models\Server;
+ use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
++use Pterodactyl\Http\Requests\Api\Client\Servers\Players\GetPlayersRequest;
++use Pterodactyl\Http\Requests\Api\Client\Servers\Players\PlayerActionRequest;
++use Pterodactyl\Http\Requests\Api\Client\Servers\Players\PlayerCommandRequest;
+ use Pterodactyl\Repositories\Wings\DaemonServerRepository;
+ use Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException;
+ use GuzzleHttp\Exception\TransferException;
+@@ -39,7 +41,7 @@ class PlayerController extends ClientApiController
+     /**
+      * GET /players - Returns the current player list.
+      */
+-    public function index(Request $request, Server $server): JsonResponse
++    public function index(GetPlayersRequest $request, Server $server): JsonResponse
+     {
+         $this->ensureGameBridge($server);
+ 
+@@ -61,21 +63,14 @@ class PlayerController extends ClientApiController
+      * POST /players/action - Executes an action on a player.
+      * Player name is in the body (not URL) to avoid encoding issues.
+      */
+-    public function action(Request $request, Server $server): JsonResponse
++    public function action(PlayerActionRequest $request, Server $server): JsonResponse
+     {
+         $this->ensureGameBridge($server);
+ 
+-        $validated = $request->validate([
+-            'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
+-            'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
+-            'params' => 'array',
+-            'params.*' => 'string',
+-        ]);
+-
+         try {
+             $response = $this->repository->setServer($server)->getHttpClient()->post(
+                 sprintf('/api/servers/%s/players/action', $server->uuid),
+-                ['json' => $validated]
++                ['json' => $request->validated()]
+             );
+         } catch (TransferException $exception) {
+             throw new DaemonConnectionException($exception);
+@@ -90,18 +85,14 @@ class PlayerController extends ClientApiController
+     /**
+      * POST /players/command - Sends a raw RCON command.
+      */
+-    public function command(Request $request, Server $server): JsonResponse
++    public function command(PlayerCommandRequest $request, Server $server): JsonResponse
+     {
+         $this->ensureGameBridge($server);
+ 
+-        $validated = $request->validate([
+-            'command' => 'required|string|max:500',
+-        ]);
+-
+         try {
+             $response = $this->repository->setServer($server)->getHttpClient()->post(
+                 sprintf('/api/servers/%s/players/command', $server->uuid),
+-                ['json' => $validated]
++                ['json' => $request->validated()]
+             );
+         } catch (TransferException $exception) {
+             throw new DaemonConnectionException($exception);
+@@ -116,7 +107,7 @@ class PlayerController extends ClientApiController
+     /**
+      * GET /players/status - Returns the game bridge connection status.
+      */
+-    public function status(Request $request, Server $server): JsonResponse
++    public function status(GetPlayersRequest $request, Server $server): JsonResponse
+     {
+         $this->ensureGameBridge($server);
+ 
+diff --git a/app/Http/Requests/Api/Client/Servers/Players/GetPlayersRequest.php b/app/Http/Requests/Api/Client/Servers/Players/GetPlayersRequest.php
+new file mode 100644
+index 000000000..f7fd15fc5
+--- /dev/null
++++ b/app/Http/Requests/Api/Client/Servers/Players/GetPlayersRequest.php
+@@ -0,0 +1,17 @@
++<?php
++
++namespace Pterodactyl\Http\Requests\Api\Client\Servers\Players;
++
++use Pterodactyl\Models\Permission;
++use Pterodactyl\Http\Requests\Api\Client\ClientApiRequest;
++
++/**
++ * Authorizes requests to view the player list for a server.
++ */
++class GetPlayersRequest extends ClientApiRequest
++{
++    public function permission(): string
++    {
++        return Permission::ACTION_PLAYERS_LIST;
++    }
++}
+diff --git a/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php b/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php
+new file mode 100644
+index 000000000..3f5a219ee
+--- /dev/null
++++ b/app/Http/Requests/Api/Client/Servers/Players/PlayerActionRequest.php
+@@ -0,0 +1,27 @@
++<?php
++
++namespace Pterodactyl\Http\Requests\Api\Client\Servers\Players;
++
++use Pterodactyl\Models\Permission;
++use Pterodactyl\Http\Requests\Api\Client\ClientApiRequest;
++
++/**
++ * Authorizes requests to execute actions on players (kick, ban, etc.).
++ */
++class PlayerActionRequest extends ClientApiRequest
++{
++    public function permission(): string
++    {
++        return Permission::ACTION_PLAYERS_ACTION;
++    }
++
++    public function rules(): array
++    {
++        return [
++            'player' => ['required', 'string', 'regex:/^[a-zA-Z0-9_]{1,16}$/'],
++            'action' => 'required|string|in:kick,ban,message,smite,teleport,gamemode,op,deop',
++            'params' => 'array',
++            'params.*' => 'string',
++        ];
++    }
++}
+diff --git a/app/Http/Requests/Api/Client/Servers/Players/PlayerCommandRequest.php b/app/Http/Requests/Api/Client/Servers/Players/PlayerCommandRequest.php
+new file mode 100644
+index 000000000..0ec55b056
+--- /dev/null
++++ b/app/Http/Requests/Api/Client/Servers/Players/PlayerCommandRequest.php
+@@ -0,0 +1,24 @@
++<?php
++
++namespace Pterodactyl\Http\Requests\Api\Client\Servers\Players;
++
++use Pterodactyl\Models\Permission;
++use Pterodactyl\Http\Requests\Api\Client\ClientApiRequest;
++
++/**
++ * Authorizes requests to send raw RCON commands to a server.
++ */
++class PlayerCommandRequest extends ClientApiRequest
++{
++    public function permission(): string
++    {
++        return Permission::ACTION_PLAYERS_COMMAND;
++    }
++
++    public function rules(): array
++    {
++        return [
++            'command' => 'required|string|max:500',
++        ];
++    }
++}
+diff --git a/routes/servers/elytra.php b/routes/servers/elytra.php
+index 58bda185f..04be35789 100644
+--- a/routes/servers/elytra.php
++++ b/routes/servers/elytra.php
+@@ -100,14 +100,10 @@ Route::group([
+ 
+     // Players API (game bridge)
+     Route::group(['prefix' => '/players'], function () {
+-        Route::get('/', [Elytra\PlayerController::class, 'index'])
+-            ->middleware('permission:players.list');
+-        Route::post('/action', [Elytra\PlayerController::class, 'action'])
+-            ->middleware('permission:players.action');
+-        Route::post('/command', [Elytra\PlayerController::class, 'command'])
+-            ->middleware('permission:players.command');
+-        Route::get('/status', [Elytra\PlayerController::class, 'status'])
+-            ->middleware('permission:players.list');
++        Route::get('/', [Elytra\PlayerController::class, 'index']);
++        Route::post('/action', [Elytra\PlayerController::class, 'action']);
++        Route::post('/command', [Elytra\PlayerController::class, 'command']);
++        Route::get('/status', [Elytra\PlayerController::class, 'status']);
+     });
+ 
+     // Backups API
+-- 
+2.43.0
+

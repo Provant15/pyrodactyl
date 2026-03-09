@@ -1,7 +1,7 @@
 From 3c24697c5a724af7ef7a083b428556d88b3bfbb4 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 19:26:57 +1000
-Subject: [PATCH 03/19] fix(db-hosts): driver-aware testConnection, remove
+Subject: [PATCH 03/21] fix(db-hosts): driver-aware testConnection, remove
  credential logging, clean up repository
 
 

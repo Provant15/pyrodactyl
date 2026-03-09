@@ -232,6 +232,26 @@
       "author": null,
       "date": "2026-03-07",
       "risk": "low"
+    },
+    {
+      "id": "0020",
+      "title": "fix use Form Request classes for player route permis",
+      "file": "0020-fix-use-Form-Request-classes-for-player-route-permis.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-09",
+      "risk": "low"
+    },
+    {
+      "id": "0021",
+      "title": "feat eggs add minecraft_rcon feature flag to Java se",
+      "file": "0021-feat-eggs-add-minecraft_rcon-feature-flag-to-Java-se.patch",
+      "category": "config",
+      "description": "",
+      "author": null,
+      "date": "2026-03-09",
+      "risk": "low"
     }
   ]
 }

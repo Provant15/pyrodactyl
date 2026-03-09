@@ -1,7 +1,7 @@
 From 4b5bfe16b8bc2ddf32bfe21ef1843ee40cee8f85 Mon Sep 17 00:00:00 2001
 From: Provant15 <me@provant.dev>
 Date: Fri, 6 Mar 2026 21:24:00 +1000
-Subject: [PATCH 11/19] docs: add dashboard navigation redesign design
+Subject: [PATCH 11/21] docs: add dashboard navigation redesign design
 
 
 diff --git a/docs/plans/2026-03-06-dashboard-nav-redesign-design.md b/docs/plans/2026-03-06-dashboard-nav-redesign-design.md

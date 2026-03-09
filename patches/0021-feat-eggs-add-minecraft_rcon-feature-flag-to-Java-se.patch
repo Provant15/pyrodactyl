@@ -1,0 +1,96 @@
+From 33b225893e5f716f16e464ce94f26b90ebc7cf71 Mon Sep 17 00:00:00 2001
+From: Provant15 <me@provant.dev>
+Date: Mon, 9 Mar 2026 20:25:21 +1000
+Subject: [PATCH 21/21] feat(eggs): add minecraft_rcon feature flag to Java
+ server eggs
+
+Enables the Players page for all RCON-capable Minecraft server
+types. Added to seed JSON so the flag survives container restarts.
+
+diff --git a/database/Seeders/eggs/minecraft/egg-fabric.json b/database/Seeders/eggs/minecraft/egg-fabric.json
+index dd8ef3e92..9dc4f4b86 100644
+--- a/database/Seeders/eggs/minecraft/egg-fabric.json
++++ b/database/Seeders/eggs/minecraft/egg-fabric.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "mod/fabric",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+diff --git a/database/Seeders/eggs/minecraft/egg-forge-minecraft.json b/database/Seeders/eggs/minecraft/egg-forge-minecraft.json
+index e2e7ebeab..245d64eac 100644
+--- a/database/Seeders/eggs/minecraft/egg-forge-minecraft.json
++++ b/database/Seeders/eggs/minecraft/egg-forge-minecraft.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "mod/forge",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+diff --git a/database/Seeders/eggs/minecraft/egg-paper.json b/database/Seeders/eggs/minecraft/egg-paper.json
+index ed8cf0ae2..350308f9b 100644
+--- a/database/Seeders/eggs/minecraft/egg-paper.json
++++ b/database/Seeders/eggs/minecraft/egg-paper.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "plugin/paper",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+diff --git a/database/Seeders/eggs/minecraft/egg-purpur.json b/database/Seeders/eggs/minecraft/egg-purpur.json
+index 7b71a5789..3d6a6a173 100644
+--- a/database/Seeders/eggs/minecraft/egg-purpur.json
++++ b/database/Seeders/eggs/minecraft/egg-purpur.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "plugin/purpur",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+diff --git a/database/Seeders/eggs/minecraft/egg-sponge--sponge-vanilla.json b/database/Seeders/eggs/minecraft/egg-sponge--sponge-vanilla.json
+index daed0a56e..1d364607f 100644
+--- a/database/Seeders/eggs/minecraft/egg-sponge--sponge-vanilla.json
++++ b/database/Seeders/eggs/minecraft/egg-sponge--sponge-vanilla.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "plugin/sponge",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+diff --git a/database/Seeders/eggs/minecraft/egg-vanilla-minecraft.json b/database/Seeders/eggs/minecraft/egg-vanilla-minecraft.json
+index 994c95bfd..9bc82be83 100644
+--- a/database/Seeders/eggs/minecraft/egg-vanilla-minecraft.json
++++ b/database/Seeders/eggs/minecraft/egg-vanilla-minecraft.json
+@@ -14,7 +14,8 @@
+         "pid_limit",
+         "vanilla",
+         "mclogs",
+-        "subdomain_minecraft"
++        "subdomain_minecraft",
++        "minecraft_rcon"
+     ],
+     "docker_images": {
+         "Java 25": "ghcr.io/pyrodactyl-oss/images:java_25",
+-- 
+2.43.0
+
