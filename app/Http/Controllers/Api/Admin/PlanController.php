@@ -5,7 +5,9 @@ namespace Pterodactyl\Http\Controllers\Api\Admin;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Pterodactyl\Models\Plan;
+use Pterodactyl\Models\ServerSlot;
 use Pterodactyl\Http\Resources\Admin\PlanResource;
+use Pterodactyl\Services\Activity\ActivityLogService;
 use Pterodactyl\Services\Plans\PlanCreationService;
 use Pterodactyl\Services\Plans\PlanUpdateService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -18,6 +20,7 @@ class PlanController extends AdminApiController
     public function __construct(
         private PlanCreationService $creationService,
         private PlanUpdateService $updateService,
+        private ActivityLogService $activityLog,
     ) {
     }
 
@@ -116,5 +119,75 @@ class PlanController extends AdminApiController
         $plan->delete();
 
         return $this->returnNoContent();
+    }
+
+    /**
+     * Propagate a plan's current resource values to active servers on slots using this plan.
+     *
+     * Only updates servers where the slot has no override for the given resource.
+     * Dry-run mode (preview=true) returns affected servers without making changes.
+     */
+    public function propagate(Request $request, Plan $plan): JsonResponse
+    {
+        $preview = $request->boolean('preview', false);
+
+        $slots = ServerSlot::where('plan_id', $plan->id)
+            ->whereNotNull('active_server_id')
+            ->with(['activeServer'])
+            ->get();
+
+        $affected = [];
+
+        foreach ($slots as $slot) {
+            $server = $slot->activeServer;
+            if (!$server) {
+                continue;
+            }
+
+            $changes = [];
+
+            if ($slot->memory_override === null && $server->memory !== $plan->memory) {
+                $changes['memory'] = ['from' => $server->memory, 'to' => $plan->memory];
+            }
+            if ($slot->disk_override === null && $server->disk !== $plan->disk) {
+                $changes['disk'] = ['from' => $server->disk, 'to' => $plan->disk];
+            }
+            if ($slot->cpu_override === null && $server->cpu !== $plan->cpu) {
+                $changes['cpu'] = ['from' => $server->cpu, 'to' => $plan->cpu];
+            }
+            if ($slot->io_override === null && $server->io !== $plan->io) {
+                $changes['io'] = ['from' => $server->io, 'to' => $plan->io];
+            }
+            if ($slot->swap_override === null && $server->swap !== $plan->swap) {
+                $changes['swap'] = ['from' => $server->swap, 'to' => $plan->swap];
+            }
+
+            if (!empty($changes)) {
+                $affected[] = [
+                    'server_id' => $server->id,
+                    'server_name' => $server->name,
+                    'slot_id' => $slot->id,
+                    'changes' => $changes,
+                ];
+
+                if (!$preview) {
+                    $server->update(array_map(fn ($c) => $c['to'], $changes));
+                }
+            }
+        }
+
+        if (!$preview && !empty($affected)) {
+            $this->activityLog
+                ->event('admin:plan.propagated')
+                ->subject($plan)
+                ->property(['affected_count' => count($affected)])
+                ->log();
+        }
+
+        return new JsonResponse([
+            'preview' => $preview,
+            'affected_count' => count($affected),
+            'affected_servers' => $affected,
+        ]);
     }
 }
