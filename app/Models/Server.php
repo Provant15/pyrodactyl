@@ -172,7 +172,7 @@ class Server extends Model
         'oom_disabled' => 'sometimes|boolean',
         'exclude_from_resource_calculation' => 'sometimes|boolean',
         'disk' => 'required|numeric|min:0',
-        'allocation_id' => 'required_unless:status,archived,archiving|bail|unique:servers|exists:allocations,id',
+        'allocation_id' => 'nullable|required_unless:status,archived,archiving|bail|unique:servers|exists:allocations,id',
         'nest_id' => 'required|exists:nests,id',
         'egg_id' => 'required|exists:eggs,id',
         'startup' => 'required|string',

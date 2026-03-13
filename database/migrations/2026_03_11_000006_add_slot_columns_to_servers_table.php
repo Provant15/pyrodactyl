@@ -18,9 +18,11 @@ return new class extends Migration {
             $table->index('status');
         });
 
-        // Replace the full unique constraint on allocation_id with a partial unique index.
-        // This allows multiple archived servers to have NULL allocation_id.
+        // Make allocation_id nullable so archived servers can release their allocation.
+        // Replace the full unique constraint with a partial unique index to allow
+        // multiple archived servers to have NULL allocation_id.
         Schema::table('servers', function (Blueprint $table) {
+            $table->unsignedBigInteger('allocation_id')->nullable()->change();
             $table->dropUnique(['allocation_id']);
         });
 
@@ -35,6 +37,7 @@ return new class extends Migration {
         DB::statement('DROP INDEX IF EXISTS servers_allocation_id_unique');
 
         Schema::table('servers', function (Blueprint $table) {
+            $table->unsignedBigInteger('allocation_id')->nullable(false)->change();
             $table->unique('allocation_id');
             $table->dropIndex(['status']);
             $table->dropIndex(['slot_id']);
