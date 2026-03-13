@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $cpu_override
  * @property int|null $io_override
  * @property int|null $swap_override
+ * @property array|null $pending_deploy_data
  * @property string $status
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -69,6 +70,7 @@ class ServerSlot extends Model
         'cpu_override' => 'integer',
         'io_override' => 'integer',
         'swap_override' => 'integer',
+        'pending_deploy_data' => 'json',
     ];
 
     public static array $validationRules = [
@@ -83,6 +85,7 @@ class ServerSlot extends Model
         'cpu_override' => 'nullable|integer|min:0',
         'io_override' => 'nullable|integer|between:10,1000',
         'swap_override' => 'nullable|integer|min:-1',
+        'pending_deploy_data' => 'nullable|json',
         'status' => 'required|string|in:idle,deploying,archiving,restoring',
     ];
 
