@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Models;
+namespace Pterodactyl\Tests\Unit\Models;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Plan;
 use Pterodactyl\Models\User;
 use Pterodactyl\Models\Node;
@@ -28,7 +28,7 @@ class ServerSlotTest extends TestCase
         $user = User::factory()->create();
         [$node, $allocation] = $this->createNodeWithAllocation();
         $plan = Plan::query()->create([
-            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100,
+            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0,
         ]);
 
         $slot = ServerSlot::query()->create([
@@ -47,7 +47,7 @@ class ServerSlotTest extends TestCase
         $user = User::factory()->create();
         [$node, $allocation] = $this->createNodeWithAllocation();
         $plan = Plan::query()->create([
-            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100,
+            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0,
         ]);
 
         $slot = ServerSlot::query()->create([
@@ -89,7 +89,7 @@ class ServerSlotTest extends TestCase
         $user = User::factory()->create();
         [$node, $allocation] = $this->createNodeWithAllocation();
         $plan = Plan::query()->create([
-            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100,
+            'name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0,
         ]);
 
         $slot = ServerSlot::query()->create([

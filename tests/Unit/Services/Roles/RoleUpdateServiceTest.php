@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Services\Roles;
+namespace Pterodactyl\Tests\Unit\Services\Roles;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Pterodactyl\Services\Roles\RoleUpdateService;
 use Pterodactyl\Services\Roles\RolePermissionService;

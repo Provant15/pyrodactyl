@@ -40,6 +40,7 @@ class NodeFactory extends Factory
             'daemonListen' => 8080,
             'daemonSFTP' => 2022,
             'daemonBase' => '/var/lib/pterodactyl/volumes',
+            'daemonType' => 'elytra',
             'backupDisk' => 'local',
         ];
     }

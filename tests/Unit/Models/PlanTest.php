@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Models;
+namespace Pterodactyl\Tests\Unit\Models;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Plan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -29,13 +29,13 @@ class PlanTest extends TestCase
     {
         Plan::query()->create([
             'name' => 'Plan A',
-            'memory' => 1024, 'disk' => 10240, 'cpu' => 100,
+            'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0,
             'is_default' => true,
         ]);
 
         $planB = Plan::query()->create([
             'name' => 'Plan B',
-            'memory' => 2048, 'disk' => 20480, 'cpu' => 200,
+            'memory' => 2048, 'disk' => 20480, 'cpu' => 200, 'io' => 500, 'swap' => 0,
             'is_default' => true,
         ]);
 
@@ -48,7 +48,7 @@ class PlanTest extends TestCase
     {
         $plan = Plan::query()->create([
             'name' => 'Test Plan',
-            'memory' => 1024, 'disk' => 10240, 'cpu' => 100,
+            'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0,
         ]);
 
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\HasMany::class, $plan->slots());

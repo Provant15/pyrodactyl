@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Integration\Api\Admin;
+namespace Pterodactyl\Tests\Integration\Api\Admin;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Plan;
 use Pterodactyl\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,8 +21,8 @@ class PlanControllerTest extends TestCase
 
     public function testListPlans(): void
     {
-        Plan::query()->create(['name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100]);
-        Plan::query()->create(['name' => 'Large', 'memory' => 8192, 'disk' => 81920, 'cpu' => 400]);
+        Plan::query()->create(['name' => 'Small', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0]);
+        Plan::query()->create(['name' => 'Large', 'memory' => 8192, 'disk' => 81920, 'cpu' => 400, 'io' => 500, 'swap' => 0]);
 
         $response = $this->actingAs($this->admin)->getJson('/api/admin/plans');
 
@@ -53,7 +53,7 @@ class PlanControllerTest extends TestCase
 
     public function testUpdatePlan(): void
     {
-        $plan = Plan::query()->create(['name' => 'Old', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100]);
+        $plan = Plan::query()->create(['name' => 'Old', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0]);
 
         $response = $this->actingAs($this->admin)->patchJson("/api/admin/plans/{$plan->id}", [
             'name' => 'Updated',
@@ -67,7 +67,7 @@ class PlanControllerTest extends TestCase
 
     public function testDeletePlan(): void
     {
-        $plan = Plan::query()->create(['name' => 'Deletable', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100]);
+        $plan = Plan::query()->create(['name' => 'Deletable', 'memory' => 1024, 'disk' => 10240, 'cpu' => 100, 'io' => 500, 'swap' => 0]);
 
         $response = $this->actingAs($this->admin)->deleteJson("/api/admin/plans/{$plan->id}");
 

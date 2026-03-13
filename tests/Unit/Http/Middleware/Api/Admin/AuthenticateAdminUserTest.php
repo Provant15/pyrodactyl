@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Http\Middleware\Api\Admin;
+namespace Pterodactyl\Tests\Unit\Http\Middleware\Api\Admin;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Pterodactyl\Models\User;
 use Illuminate\Http\Request;

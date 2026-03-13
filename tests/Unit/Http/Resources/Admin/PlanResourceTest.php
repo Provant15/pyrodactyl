@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Http\Resources\Admin;
+namespace Pterodactyl\Tests\Unit\Http\Resources\Admin;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Plan;
 use Pterodactyl\Http\Resources\Admin\PlanResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;

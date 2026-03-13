@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Database;
+namespace Pterodactyl\Tests\Unit\Database;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Database\Seeders\TemplateRoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;

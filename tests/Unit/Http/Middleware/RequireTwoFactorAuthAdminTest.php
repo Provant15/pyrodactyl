@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Http\Middleware;
+namespace Pterodactyl\Tests\Unit\Http\Middleware;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Pterodactyl\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;

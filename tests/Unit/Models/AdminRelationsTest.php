@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Models;
+namespace Pterodactyl\Tests\Unit\Models;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Pterodactyl\Models\User;
 use Pterodactyl\Models\Server;

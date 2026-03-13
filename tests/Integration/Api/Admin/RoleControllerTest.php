@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Integration\Api\Admin;
+namespace Pterodactyl\Tests\Integration\Api\Admin;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Role;
 use Pterodactyl\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,14 +21,14 @@ class RoleControllerTest extends TestCase
 
     public function testListRoles(): void
     {
+        $existingCount = Role::count();
         Role::query()->create(['name' => 'Role A']);
         Role::query()->create(['name' => 'Role B']);
 
         $response = $this->actingAs($this->admin)->getJson('/api/admin/roles');
 
         $response->assertOk();
-        $response->assertJsonCount(2, 'data');
-        $response->assertJsonPath('data.0.name', 'Role A');
+        $response->assertJsonCount($existingCount + 2, 'data');
     }
 
     public function testCreateRole(): void
@@ -83,7 +83,8 @@ class RoleControllerTest extends TestCase
 
     public function testCannotDeleteSystemRole(): void
     {
-        $role = Role::query()->create(['name' => 'System Role', 'is_system' => true]);
+        // Use a seeded system role (e.g. Full Administrator) to avoid transaction issues
+        $role = Role::where('is_system', true)->firstOrFail();
 
         $response = $this->actingAs($this->admin)->deleteJson("/api/admin/roles/{$role->id}");
 

@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Services\Plans;
+namespace Pterodactyl\Tests\Unit\Services\Plans;
 
-use Tests\TestCase;
+use Pterodactyl\Tests\TestCase;
 use Pterodactyl\Models\Plan;
 use Pterodactyl\Services\Plans\PlanCreationService;
 use Pterodactyl\Services\Plans\PlanUpdateService;
