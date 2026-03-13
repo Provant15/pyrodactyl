@@ -3,7 +3,13 @@
 namespace Pterodactyl\Http\Controllers\Api\Admin;
 
 use Pterodactyl\Http\Resources\Admin\SlotResource;
+use Pterodactyl\Models\Egg;
+use Pterodactyl\Models\Server;
 use Pterodactyl\Models\ServerSlot;
+use Pterodactyl\Services\Servers\ServerArchiveService;
+use Pterodactyl\Services\Servers\ServerDeployService;
+use Pterodactyl\Services\Servers\ServerRestoreService;
+use Pterodactyl\Services\Servers\ServerSwapService;
 use Pterodactyl\Services\Slots\SlotCreationService;
 use Pterodactyl\Services\Slots\SlotDeletionService;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +27,10 @@ class SlotController extends AdminApiController
     public function __construct(
         private SlotCreationService $creationService,
         private SlotDeletionService $deletionService,
+        private ServerDeployService $deployService,
+        private ServerArchiveService $archiveService,
+        private ServerRestoreService $restoreService,
+        private ServerSwapService $swapService,
     ) {}
 
     /**
@@ -102,5 +112,68 @@ class SlotController extends AdminApiController
         $this->deletionService->handle($slot);
 
         return $this->returnNoContent();
+    }
+
+    /**
+     * Deploy an egg to a slot, or swap if slot has an active server.
+     */
+    public function deploy(Request $request, ServerSlot $slot): JsonResponse
+    {
+        $validated = $request->validate([
+            'egg_id' => 'required|exists:eggs,id',
+            'name' => 'required|string|max:255',
+            'start_on_completion' => 'boolean',
+            'skip_validation' => 'boolean',
+        ]);
+
+        $egg = Egg::findOrFail($validated['egg_id']);
+
+        if ($slot->active_server_id !== null) {
+            $result = $this->swapService->handle($slot, $egg, $validated);
+
+            return new JsonResponse([
+                'message' => 'Server swap initiated. Current server is being archived.',
+                'uuid' => $result['uuid'] ?? null,
+            ], JsonResponse::HTTP_ACCEPTED);
+        }
+
+        $server = $this->deployService->handle($slot, $egg, $validated);
+
+        return new JsonResponse([
+            'data' => (new SlotResource($slot->fresh(['plan', 'activeServer'])))->resolve(),
+        ]);
+    }
+
+    /**
+     * Archive the slot's active server.
+     */
+    public function archive(ServerSlot $slot): JsonResponse
+    {
+        $result = $this->archiveService->handle($slot);
+
+        return new JsonResponse([
+            'message' => 'Archive initiated.',
+            'uuid' => $result['uuid'] ?? null,
+        ], JsonResponse::HTTP_ACCEPTED);
+    }
+
+    /**
+     * Restore an archived server to this slot.
+     */
+    public function restore(Request $request, ServerSlot $slot): JsonResponse
+    {
+        $validated = $request->validate([
+            'server_id' => 'required|exists:servers,id',
+        ]);
+
+        $server = Server::where('id', $validated['server_id'])
+            ->where('status', Server::STATUS_ARCHIVED)
+            ->firstOrFail();
+
+        $this->restoreService->handle($slot, $server);
+
+        return new JsonResponse([
+            'message' => 'Restore initiated. Reinstalling game binaries (Phase 1).',
+        ], JsonResponse::HTTP_ACCEPTED);
     }
 }

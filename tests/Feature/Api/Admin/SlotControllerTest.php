@@ -119,4 +119,80 @@ class SlotControllerTest extends TestCase
         $response = $this->getJson('/api/admin/slots');
         $response->assertUnauthorized();
     }
+
+    public function test_deploy_creates_server_on_empty_slot(): void
+    {
+        $this->mock(\Pterodactyl\Services\Servers\ServerCreationService::class, function ($mock) {
+            $mock->shouldReceive('handle')->andReturn(
+                \Pterodactyl\Models\Server::factory()->create(['status' => 'installing'])
+            );
+        });
+
+        $egg = \Pterodactyl\Models\Egg::factory()->create(['min_memory' => null]);
+        $slot = ServerSlot::factory()->create([
+            'status' => ServerSlot::STATUS_IDLE,
+            'active_server_id' => null,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/api/admin/slots/{$slot->id}/deploy", [
+                'egg_id' => $egg->id,
+                'name' => 'My Server',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonStructure(['data' => ['id']]);
+    }
+
+    public function test_archive_initiates_archival(): void
+    {
+        $this->mock(\Pterodactyl\Services\Elytra\ElytraJobService::class, function ($mock) {
+            $mock->shouldReceive('submitJob')
+                ->andReturn(['uuid' => 'job-123', 'status' => 'submitted']);
+        });
+
+        $node = Node::factory()->create();
+        $egg = \Pterodactyl\Models\Egg::factory()->create();
+        $server = \Pterodactyl\Models\Server::factory()->create([
+            'node_id' => $node->id, 'egg_id' => $egg->id,
+        ]);
+        $slot = ServerSlot::factory()->create([
+            'node_id' => $node->id,
+            'status' => ServerSlot::STATUS_IDLE,
+            'active_server_id' => $server->id,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/api/admin/slots/{$slot->id}/archive");
+
+        $response->assertAccepted();
+        $response->assertJsonPath('uuid', 'job-123');
+    }
+
+    public function test_restore_initiates_restoration(): void
+    {
+        $this->mock(\Pterodactyl\Repositories\Wings\DaemonServerRepository::class, function ($mock) {
+            $mock->shouldReceive('setServer')->andReturnSelf();
+            $mock->shouldReceive('reinstall');
+        });
+
+        $node = Node::factory()->create();
+        $server = \Pterodactyl\Models\Server::factory()->create([
+            'node_id' => $node->id,
+            'status' => \Pterodactyl\Models\Server::STATUS_ARCHIVED,
+            'archive_snapshot_id' => 'snap-abc',
+        ]);
+        $slot = ServerSlot::factory()->create([
+            'node_id' => $node->id,
+            'status' => ServerSlot::STATUS_IDLE,
+            'active_server_id' => null,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/api/admin/slots/{$slot->id}/restore", [
+                'server_id' => $server->id,
+            ]);
+
+        $response->assertAccepted();
+    }
 }
