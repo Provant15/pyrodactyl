@@ -44,6 +44,17 @@ class RouteServiceProvider extends ServiceProvider
                     ->prefix('/admin')
                     ->group(base_path('routes/admin.php'));
 
+                // New Admin API (session-based, for React SPA)
+                Route::middleware([
+                    'auth.session',
+                    RequireTwoFactorAuthentication::class,
+                    \Pterodactyl\Http\Middleware\Api\Admin\AuthenticateAdminUser::class,
+                    'throttle:api.admin',
+                ])
+                    ->prefix('/api/admin')
+                    ->scopeBindings()
+                    ->group(base_path('routes/api-admin.php'));
+
                 Route::middleware('guest')->prefix('/auth')->group(base_path('routes/auth.php'));
             });
 
@@ -106,6 +117,12 @@ class RouteServiceProvider extends ServiceProvider
                 config('http.rate_limit.application_period'),
                 config('http.rate_limit.application')
             )->by($key);
+        });
+
+        RateLimiter::for('api.admin', function (Request $request) {
+            $key = optional($request->user())->uuid ?: $request->ip();
+
+            return Limit::perMinute(360)->by($key);
         });
         ResourceLimit::boot();
     }

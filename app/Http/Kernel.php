@@ -104,5 +104,6 @@ class Kernel extends HttpKernel
         'bindings' => SubstituteBindings::class,
         'node.maintenance' => MaintenanceMiddleware::class,
         'captcha' => \Pterodactyl\Http\Middleware\VerifyCaptcha::class,
+        'admin.permission' => \Pterodactyl\Http\Middleware\Api\Admin\CheckAdminPermission::class,
     ];
 }
