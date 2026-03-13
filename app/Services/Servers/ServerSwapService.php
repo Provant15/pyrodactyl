@@ -49,7 +49,7 @@ class ServerSwapService
                 'egg_id' => $egg->id,
                 'name' => $deployOptions['name'],
                 'start_on_completion' => $deployOptions['start_on_completion'] ?? false,
-                'correlation_token' => $result['uuid'],
+                'correlation_token' => $result['job_id'],
             ],
         ]);
 

@@ -34,7 +34,7 @@ class ServerArchiveServiceTest extends TestCase
         $this->mock(ElytraJobService::class, function ($mock) {
             $mock->shouldReceive('submitJob')
                 ->andReturn([
-                    'uuid' => 'elytra-job-uuid-123',
+                    'job_id' => 'elytra-job-uuid-123',
                     'type' => 'archive_create',
                     'status' => 'submitted',
                 ]);
@@ -92,7 +92,7 @@ class ServerArchiveServiceTest extends TestCase
 
         $result = $this->service->handle($slot);
 
-        $this->assertEquals('elytra-job-uuid-123', $result['uuid']);
+        $this->assertEquals('elytra-job-uuid-123', $result['job_id']);
 
         $slot->refresh();
         $this->assertEquals(ServerSlot::STATUS_ARCHIVING, $slot->status);

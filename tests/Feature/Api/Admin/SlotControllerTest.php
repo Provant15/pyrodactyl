@@ -221,7 +221,7 @@ class SlotControllerTest extends TestCase
     {
         $this->mock(\Pterodactyl\Services\Elytra\ElytraJobService::class, function ($mock) {
             $mock->shouldReceive('submitJob')
-                ->andReturn(['uuid' => 'job-123', 'status' => 'submitted']);
+                ->andReturn(['job_id' => 'job-123', 'status' => 'submitted']);
         });
 
         $node = $this->createNode();
@@ -236,7 +236,7 @@ class SlotControllerTest extends TestCase
             ->postJson("/api/admin/slots/{$slot->id}/archive");
 
         $response->assertAccepted();
-        $response->assertJsonPath('uuid', 'job-123');
+        $response->assertJsonPath('job_id', 'job-123');
     }
 
     public function test_restore_initiates_restoration(): void

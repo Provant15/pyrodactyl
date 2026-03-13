@@ -330,7 +330,7 @@ class ArchiveJob implements Job
             ->where('status', Server::STATUS_ARCHIVED)
             ->count();
 
-        if ($archivedCount < $limit) {
+        if ($archivedCount <= $limit) {
             return;
         }
 

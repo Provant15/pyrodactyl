@@ -133,7 +133,7 @@ class SlotController extends AdminApiController
 
             return new JsonResponse([
                 'message' => 'Server swap initiated. Current server is being archived.',
-                'uuid' => $result['uuid'] ?? null,
+                'job_id' => $result['job_id'] ?? null,
             ], JsonResponse::HTTP_ACCEPTED);
         }
 
@@ -153,7 +153,7 @@ class SlotController extends AdminApiController
 
         return new JsonResponse([
             'message' => 'Archive initiated.',
-            'uuid' => $result['uuid'] ?? null,
+            'job_id' => $result['job_id'] ?? null,
         ], JsonResponse::HTTP_ACCEPTED);
     }
 

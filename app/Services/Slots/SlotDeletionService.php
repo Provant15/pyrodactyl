@@ -34,15 +34,17 @@ class SlotDeletionService
      */
     public function handle(ServerSlot $slot): void
     {
-        if ($slot->active_server_id !== null) {
-            throw new ConflictHttpException('Cannot delete slot with an active server. Archive or remove the server first.');
-        }
-
-        if ($slot->status !== ServerSlot::STATUS_IDLE) {
-            throw new ConflictHttpException('Cannot delete slot that is not idle. Current status: ' . $slot->status);
-        }
-
         $this->connection->transaction(function () use ($slot) {
+            $slot = ServerSlot::where('id', $slot->id)->lockForUpdate()->firstOrFail();
+
+            if ($slot->active_server_id !== null) {
+                throw new ConflictHttpException('Cannot delete slot with an active server. Archive or remove the server first.');
+            }
+
+            if ($slot->status !== ServerSlot::STATUS_IDLE) {
+                throw new ConflictHttpException('Cannot delete slot that is not idle. Current status: ' . $slot->status);
+            }
+
             $archivedServers = Server::where('slot_id', $slot->id)
                 ->where('status', Server::STATUS_ARCHIVED)
                 ->get();

@@ -73,7 +73,7 @@ class SlotDeletionServiceTest extends TestCase
         $this->mock(ElytraJobService::class, function ($mock) {
             $mock->shouldReceive('submitJob')
                 ->once()
-                ->andReturn(['uuid' => 'job-uuid', 'status' => 'submitted']);
+                ->andReturn(['job_id' => 'job-uuid', 'status' => 'submitted']);
         });
         $service = $this->app->make(SlotDeletionService::class);
 

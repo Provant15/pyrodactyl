@@ -67,7 +67,7 @@ class ServerArchiveService
                     ->property([
                         'server_id' => $server->id,
                         'server_name' => $server->name,
-                        'job_uuid' => $result['uuid'] ?? null,
+                        'job_uuid' => $result['job_id'] ?? null,
                     ])
                     ->log();
 
