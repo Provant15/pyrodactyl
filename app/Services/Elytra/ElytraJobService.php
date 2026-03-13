@@ -24,6 +24,7 @@ class ElytraJobService
     {
         $handlerClasses = [
             \Pterodactyl\Services\Elytra\Jobs\BackupJob::class,
+            \Pterodactyl\Services\Elytra\Jobs\ArchiveJob::class,
         ];
 
         foreach ($handlerClasses as $handlerClass) {
