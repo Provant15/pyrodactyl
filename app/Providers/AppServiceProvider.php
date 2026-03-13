@@ -48,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
       'ssh_key' => Models\UserSSHKey::class,
       'task' => Models\Task::class,
       'user' => Models\User::class,
+      'server_slot' => Models\ServerSlot::class,
     ]);
   }
 
