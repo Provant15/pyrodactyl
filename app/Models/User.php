@@ -267,15 +267,22 @@ class User extends Model implements
         return $this->hasMany(ServerSlot::class);
     }
 
+    /** @var array<string>|null */
+    private ?array $cachedAdminPermissions = null;
+
     /**
      * Returns the union of all permission strings from the user's assigned roles.
-     * Duplicates are removed.
+     * Duplicates are removed. Result is memoized for the lifetime of the model instance.
      *
      * @return array<string>
      */
     public function adminPermissions(): array
     {
-        return $this->roles()
+        if ($this->cachedAdminPermissions !== null) {
+            return $this->cachedAdminPermissions;
+        }
+
+        return $this->cachedAdminPermissions = $this->roles()
             ->with('permissions')
             ->get()
             ->flatMap(fn (Role $role) => $role->permissions->pluck('permission'))

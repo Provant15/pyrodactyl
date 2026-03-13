@@ -24,7 +24,13 @@ class PlanUpdateService
                     ->update(['is_default' => false]);
             }
 
-            $plan->update($data);
+            $allowed = [
+                'name', 'description', 'memory', 'disk', 'cpu', 'io', 'swap',
+                'oom_disabled', 'threads', 'databases_limit', 'backups_limit',
+                'allocations_limit', 'archive_limit', 'is_default',
+            ];
+
+            $plan->update(array_intersect_key($data, array_flip($allowed)));
 
             return $plan->fresh();
         });

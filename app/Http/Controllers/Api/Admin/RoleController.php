@@ -62,7 +62,11 @@ class RoleController extends AdminApiController
             'permissions.*' => 'string',
         ]);
 
-        $role = $this->creationService->handle($validated);
+        try {
+            $role = $this->creationService->handle($validated);
+        } catch (\InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
 
         return $this->returnCreated(new RoleResource($role));
     }
@@ -81,7 +85,11 @@ class RoleController extends AdminApiController
             'permissions.*' => 'string',
         ]);
 
-        $role = $this->updateService->handle($role, $validated);
+        try {
+            $role = $this->updateService->handle($role, $validated);
+        } catch (\InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
 
         return new RoleResource($role);
     }

@@ -22,7 +22,22 @@ class PlanCreationService
                 Plan::where('is_default', true)->update(['is_default' => false]);
             }
 
-            return Plan::query()->create($data);
+            return Plan::query()->create([
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+                'memory' => $data['memory'],
+                'disk' => $data['disk'],
+                'cpu' => $data['cpu'],
+                'io' => $data['io'] ?? 500,
+                'swap' => $data['swap'] ?? 0,
+                'oom_disabled' => $data['oom_disabled'] ?? false,
+                'threads' => $data['threads'] ?? null,
+                'databases_limit' => $data['databases_limit'] ?? 0,
+                'backups_limit' => $data['backups_limit'] ?? 0,
+                'allocations_limit' => $data['allocations_limit'] ?? 0,
+                'archive_limit' => $data['archive_limit'] ?? 0,
+                'is_default' => $data['is_default'] ?? false,
+            ]);
         });
     }
 }

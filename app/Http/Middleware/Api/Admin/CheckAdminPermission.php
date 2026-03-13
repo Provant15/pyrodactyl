@@ -38,8 +38,6 @@ class CheckAdminPermission
             return $next($request);
         }
 
-        throw new AccessDeniedHttpException(
-            "This account does not have the required permission: {$permission}"
-        );
+        throw new AccessDeniedHttpException('You do not have permission to perform this action.');
     }
 }
