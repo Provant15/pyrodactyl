@@ -85,7 +85,7 @@ class ServerSlot extends Model
         'cpu_override' => 'nullable|integer|min:0',
         'io_override' => 'nullable|integer|between:10,1000',
         'swap_override' => 'nullable|integer|min:-1',
-        'pending_deploy_data' => 'nullable|json',
+        'pending_deploy_data' => 'nullable|array',
         'status' => 'required|string|in:idle,deploying,archiving,restoring',
     ];
 
