@@ -2,6 +2,7 @@
 
 namespace Pterodactyl\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -28,6 +29,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Plan extends Model
 {
+    /** @use HasFactory<\Database\Factories\PlanFactory> */
+    use HasFactory;
+
     public const RESOURCE_NAME = 'plan';
 
     protected $table = 'plans';

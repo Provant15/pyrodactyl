@@ -2,6 +2,7 @@
 
 namespace Pterodactyl\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -20,6 +21,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class Role extends Model
 {
+    /** @use HasFactory<\Database\Factories\RoleFactory> */
+    use HasFactory;
+
     public const RESOURCE_NAME = 'role';
 
     protected $table = 'roles';

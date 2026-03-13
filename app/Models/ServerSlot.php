@@ -2,6 +2,7 @@
 
 namespace Pterodactyl\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,6 +34,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ServerSlot extends Model
 {
+    /** @use HasFactory<\Database\Factories\ServerSlotFactory> */
+    use HasFactory;
+
     public const RESOURCE_NAME = 'server_slot';
 
     public function getRouteKeyName(): string
