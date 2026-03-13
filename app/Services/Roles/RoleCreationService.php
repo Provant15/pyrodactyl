@@ -24,6 +24,7 @@ class RoleCreationService
     public function handle(array $data): Role
     {
         $permissions = $data['permissions'] ?? [];
+        $permissions = array_values(array_unique($permissions));
 
         if (!empty($permissions)) {
             $invalid = $this->permissionService->validatePermissions($permissions);

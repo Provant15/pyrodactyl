@@ -26,6 +26,9 @@ class RoleUpdateService
     public function handle(Role $role, array $data): Role
     {
         $permissions = $data['permissions'] ?? null;
+        if ($permissions !== null) {
+            $permissions = array_values(array_unique($permissions));
+        }
 
         if ($permissions !== null && !empty($permissions)) {
             $invalid = $this->permissionService->validatePermissions($permissions);
