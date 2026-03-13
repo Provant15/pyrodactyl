@@ -126,6 +126,9 @@ class Server extends Model
     public const STATUS_REINSTALL_FAILED = 'reinstall_failed';
     public const STATUS_SUSPENDED = 'suspended';
     public const STATUS_RESTORING_BACKUP = 'restoring_backup';
+    public const STATUS_ARCHIVED = 'archived';
+    public const STATUS_ARCHIVING = 'archiving';
+    public const STATUS_RESTORING = 'restoring';
 
     /**
      * The table associated with the model.
@@ -169,7 +172,7 @@ class Server extends Model
         'oom_disabled' => 'sometimes|boolean',
         'exclude_from_resource_calculation' => 'sometimes|boolean',
         'disk' => 'required|numeric|min:0',
-        'allocation_id' => 'required|bail|unique:servers|exists:allocations,id',
+        'allocation_id' => 'required_unless:status,archived,archiving|bail|unique:servers|exists:allocations,id',
         'nest_id' => 'required|exists:nests,id',
         'egg_id' => 'required|exists:eggs,id',
         'startup' => 'required|string',
@@ -179,6 +182,9 @@ class Server extends Model
         'allocation_limit' => 'nullable|integer|min:0',
         'backup_limit' => 'nullable|integer|min:0',
         'backup_storage_limit' => 'nullable|integer|min:0',
+        'slot_id' => 'nullable|exists:server_slots,id',
+        'archived_at' => 'nullable|date',
+        'archive_snapshot_id' => 'nullable|string',
     ];
 
     /**
@@ -203,6 +209,8 @@ class Server extends Model
         'allocation_limit' => 'integer',
         'backup_limit' => 'integer',
         'backup_storage_limit' => 'integer',
+        'slot_id' => 'integer',
+        'archived_at' => 'datetime',
         self::CREATED_AT => 'datetime',
         self::UPDATED_AT => 'datetime',
         'deleted_at' => 'datetime',
@@ -285,6 +293,22 @@ class Server extends Model
     public function allocation(): HasOne
     {
         return $this->hasOne(Allocation::class, 'id', 'allocation_id');
+    }
+
+    /**
+     * Returns the server slot this server belongs to.
+     */
+    public function slot(): BelongsTo
+    {
+        return $this->belongsTo(ServerSlot::class, 'slot_id');
+    }
+
+    /**
+     * Checks if the server is in an archived state.
+     */
+    public function isArchived(): bool
+    {
+        return $this->status === self::STATUS_ARCHIVED;
     }
 
     /**

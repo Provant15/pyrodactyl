@@ -100,6 +100,13 @@ class Egg extends Model
         'script_entry',
         'script_container',
         'copy_script_from',
+        'min_memory',
+        'min_disk',
+        'min_cpu',
+        'default_memory',
+        'default_disk',
+        'default_cpu',
+        'archive_excludes',
     ];
 
     /**
@@ -114,6 +121,13 @@ class Egg extends Model
         'features' => 'array',
         'docker_images' => 'array',
         'file_denylist' => 'array',
+        'min_memory' => 'integer',
+        'min_disk' => 'integer',
+        'min_cpu' => 'integer',
+        'default_memory' => 'integer',
+        'default_disk' => 'integer',
+        'default_cpu' => 'integer',
+        'archive_excludes' => 'array',
     ];
 
     public static array $validationRules = [
@@ -135,6 +149,14 @@ class Egg extends Model
         'config_files' => 'required_without:config_from|nullable|json',
         'update_url' => 'sometimes|nullable|string',
         'force_outgoing_ip' => 'sometimes|boolean',
+        'min_memory' => 'nullable|integer|min:0',
+        'min_disk' => 'nullable|integer|min:0',
+        'min_cpu' => 'nullable|integer|min:0',
+        'default_memory' => 'nullable|integer|min:0',
+        'default_disk' => 'nullable|integer|min:0',
+        'default_cpu' => 'nullable|integer|min:0',
+        'archive_excludes' => 'nullable|array',
+        'archive_excludes.*' => 'string',
     ];
 
     protected $attributes = [

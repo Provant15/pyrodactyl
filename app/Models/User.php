@@ -13,6 +13,7 @@ use Pterodactyl\Models\Traits\HasAccessTokens;
 use Illuminate\Auth\Passwords\CanResetPassword;
 use Pterodactyl\Traits\Helpers\AvailableLanguages;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\Access\Authorizable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -251,7 +252,40 @@ class User extends Model implements
     }
 
     /**
-     * Returns all the activity logs where this user is the subject — not to
+     * Returns all admin roles assigned to this user.
+     */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'role_user');
+    }
+
+    /**
+     * Returns all server slots owned by this user.
+     */
+    public function slots(): HasMany
+    {
+        return $this->hasMany(ServerSlot::class);
+    }
+
+    /**
+     * Returns the union of all permission strings from the user's assigned roles.
+     * Duplicates are removed.
+     *
+     * @return array<string>
+     */
+    public function adminPermissions(): array
+    {
+        return $this->roles()
+            ->with('permissions')
+            ->get()
+            ->flatMap(fn (Role $role) => $role->permissions->pluck('permission'))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Returns all the activity logs where this user is the subject - not to
      * be confused by activity logs where this user is the _actor_.
      */
     public function activity(): MorphToMany
