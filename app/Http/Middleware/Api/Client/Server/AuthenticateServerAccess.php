@@ -44,6 +44,12 @@ class AuthenticateServerAccess
             }
         }
 
+        // Block client API access to archived/archiving servers.
+        // Uses NotFoundHttpException to avoid leaking information about archived server existence.
+        if (in_array($server->status, [Server::STATUS_ARCHIVED, 'archiving'])) {
+            throw new NotFoundHttpException('The requested server does not exist.');
+        }
+
         try {
             $server->validateCurrentState();
         } catch (ServerStateConflictException $exception) {
