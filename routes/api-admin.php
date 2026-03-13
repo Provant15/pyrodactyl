@@ -41,6 +41,32 @@ Route::prefix('/plans')->group(function () {
         ->middleware('admin.permission:admin:plans.manage');
 });
 
+// Slots
+Route::prefix('/slots')->group(function () {
+    Route::get('/', [Admin\SlotController::class, 'index'])
+        ->middleware('admin.permission:admin:slots.view');
+    Route::get('/{slot}', [Admin\SlotController::class, 'show'])
+        ->middleware('admin.permission:admin:slots.view');
+    Route::post('/', [Admin\SlotController::class, 'store'])
+        ->middleware('admin.permission:admin:slots.create');
+    Route::patch('/{slot}', [Admin\SlotController::class, 'update'])
+        ->middleware('admin.permission:admin:slots.update');
+    Route::delete('/{slot}', [Admin\SlotController::class, 'destroy'])
+        ->middleware('admin.permission:admin:slots.delete');
+
+    // Lifecycle actions
+    Route::post('/{slot}/deploy', [Admin\SlotController::class, 'deploy'])
+        ->middleware('admin.permission:admin:slots.deploy');
+    Route::post('/{slot}/archive', [Admin\SlotController::class, 'archive'])
+        ->middleware('admin.permission:admin:slots.archive');
+    Route::post('/{slot}/restore', [Admin\SlotController::class, 'restore'])
+        ->middleware('admin.permission:admin:slots.restore');
+});
+
+// Plan propagation
+Route::post('/plans/{plan}/propagate', [Admin\PlanController::class, 'propagate'])
+    ->middleware('admin.permission:admin:plans.manage');
+
 // Permissions metadata (for role editor UI)
 Route::get('/permissions', [Admin\RoleController::class, 'permissions'])
     ->middleware('admin.permission:admin:roles.view');

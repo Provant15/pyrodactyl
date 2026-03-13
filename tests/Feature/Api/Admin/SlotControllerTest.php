@@ -3,8 +3,12 @@
 namespace Pterodactyl\Tests\Feature\Api\Admin;
 
 use Pterodactyl\Models\Allocation;
+use Pterodactyl\Models\Egg;
+use Pterodactyl\Models\Location;
+use Pterodactyl\Models\Nest;
 use Pterodactyl\Models\Node;
 use Pterodactyl\Models\Plan;
+use Pterodactyl\Models\Server;
 use Pterodactyl\Models\ServerSlot;
 use Pterodactyl\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,6 +24,60 @@ class SlotControllerTest extends TestCase
     {
         parent::setUp();
         $this->admin = User::factory()->create(['root_admin' => true]);
+    }
+
+    /**
+     * Creates a full server with all required dependencies.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function createServer(array $overrides = []): Server
+    {
+        $location = Location::factory()->create();
+        $node = $overrides['node_id']
+            ? Node::find($overrides['node_id'])
+            : Node::factory()->create(['location_id' => $location->id]);
+        $nest = Nest::factory()->create();
+        $egg = Egg::factory()->create([
+            'nest_id' => $nest->id,
+            'author' => 'test@example.com',
+            'docker_images' => ['ghcr.io/test:latest'],
+            'config_stop' => 'stop',
+            'config_startup' => '{"done": "Started"}',
+            'config_logs' => '{}',
+            'config_files' => '{}',
+        ]);
+        $user = User::factory()->create();
+        $allocation = Allocation::factory()->create([
+            'node_id' => $node->id,
+            'server_id' => null,
+        ]);
+
+        $defaults = [
+            'owner_id' => $user->id,
+            'node_id' => $node->id,
+            'allocation_id' => $allocation->id,
+            'nest_id' => $nest->id,
+            'egg_id' => $egg->id,
+        ];
+
+        // For archived servers, allocation_id is not required
+        if (($overrides['status'] ?? null) === Server::STATUS_ARCHIVED) {
+            $defaults['allocation_id'] = null;
+            unset($overrides['allocation_id']);
+        }
+
+        return Server::factory()->create(array_merge($defaults, $overrides));
+    }
+
+    /**
+     * Creates a node with proper location dependency.
+     */
+    private function createNode(): Node
+    {
+        $location = Location::factory()->create();
+
+        return Node::factory()->create(['location_id' => $location->id]);
     }
 
     public function test_index_returns_paginated_slots(): void
@@ -51,7 +109,7 @@ class SlotControllerTest extends TestCase
     public function test_store_creates_slot(): void
     {
         $user = User::factory()->create();
-        $node = Node::factory()->create();
+        $node = $this->createNode();
         $plan = Plan::factory()->create();
         $allocation = Allocation::factory()->create([
             'node_id' => $node->id, 'server_id' => null,
@@ -117,19 +175,34 @@ class SlotControllerTest extends TestCase
     public function test_unauthenticated_user_cannot_access_slots(): void
     {
         $response = $this->getJson('/api/admin/slots');
-        $response->assertUnauthorized();
+
+        // The AuthenticateAdminUser middleware throws AccessDeniedHttpException (403)
+        // when no user is authenticated, since auth.session passes but user is null.
+        $response->assertForbidden();
     }
 
     public function test_deploy_creates_server_on_empty_slot(): void
     {
-        $this->mock(\Pterodactyl\Services\Servers\ServerCreationService::class, function ($mock) {
-            $mock->shouldReceive('handle')->andReturn(
-                \Pterodactyl\Models\Server::factory()->create(['status' => 'installing'])
-            );
+        $node = $this->createNode();
+        $server = $this->createServer(['node_id' => $node->id, 'status' => 'installing']);
+
+        $this->mock(\Pterodactyl\Services\Servers\ServerCreationService::class, function ($mock) use ($server) {
+            $mock->shouldReceive('handle')->andReturn($server);
         });
 
-        $egg = \Pterodactyl\Models\Egg::factory()->create(['min_memory' => null]);
+        $nest = Nest::factory()->create();
+        $egg = Egg::factory()->create([
+            'nest_id' => $nest->id,
+            'min_memory' => null,
+            'author' => 'test@example.com',
+            'docker_images' => ['ghcr.io/test:latest'],
+            'config_stop' => 'stop',
+            'config_startup' => '{"done": "Started"}',
+            'config_logs' => '{}',
+            'config_files' => '{}',
+        ]);
         $slot = ServerSlot::factory()->create([
+            'node_id' => $node->id,
             'status' => ServerSlot::STATUS_IDLE,
             'active_server_id' => null,
         ]);
@@ -151,11 +224,8 @@ class SlotControllerTest extends TestCase
                 ->andReturn(['uuid' => 'job-123', 'status' => 'submitted']);
         });
 
-        $node = Node::factory()->create();
-        $egg = \Pterodactyl\Models\Egg::factory()->create();
-        $server = \Pterodactyl\Models\Server::factory()->create([
-            'node_id' => $node->id, 'egg_id' => $egg->id,
-        ]);
+        $node = $this->createNode();
+        $server = $this->createServer(['node_id' => $node->id]);
         $slot = ServerSlot::factory()->create([
             'node_id' => $node->id,
             'status' => ServerSlot::STATUS_IDLE,
@@ -176,10 +246,10 @@ class SlotControllerTest extends TestCase
             $mock->shouldReceive('reinstall');
         });
 
-        $node = Node::factory()->create();
-        $server = \Pterodactyl\Models\Server::factory()->create([
+        $node = $this->createNode();
+        $server = $this->createServer([
             'node_id' => $node->id,
-            'status' => \Pterodactyl\Models\Server::STATUS_ARCHIVED,
+            'status' => Server::STATUS_ARCHIVED,
             'archive_snapshot_id' => 'snap-abc',
         ]);
         $slot = ServerSlot::factory()->create([
