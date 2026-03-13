@@ -127,6 +127,14 @@ class ServerSlot extends Model
     }
 
     /**
+     * Returns archived servers belonging to this slot.
+     */
+    public function archivedServers(): HasMany
+    {
+        return $this->hasMany(Server::class, 'slot_id')->where('status', Server::STATUS_ARCHIVED);
+    }
+
+    /**
      * Returns the effective memory considering slot override.
      */
     public function effectiveMemory(): int
