@@ -127,6 +127,29 @@ class DaemonServerRepository extends DaemonRepository
     }
 
     /**
+     * List archive snapshots for the server from Elytra.
+     *
+     * @return array Snapshot list from Elytra
+     *
+     * @throws DaemonConnectionException
+     */
+    public function listArchiveSnapshots(): array
+    {
+        Assert::isInstanceOf($this->server, Server::class);
+
+        try {
+            $response = $this->getHttpClient()->get(
+                '/api/archives',
+                ['query' => ['server' => $this->server->uuid]]
+            );
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (TransferException $exception) {
+            throw new DaemonConnectionException($exception);
+        }
+    }
+
+    /**
      * Revokes a single user's JTI by using their ID. This is simply a helper function to
      * make it easier to revoke tokens on the fly. This ensures that the JTI key is formatted
      * correctly and avoids any costly mistakes in the codebase.
