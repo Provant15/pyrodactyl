@@ -16,6 +16,10 @@ use Pterodactyl\Http\Controllers\Api\Admin;
 // Current user
 Route::get('/me', Admin\MeController::class);
 
+// Eggs (read-only, for deploy/swap UI)
+Route::get('/eggs', [Admin\EggController::class, 'index'])
+    ->middleware('admin.permission:admin:slots.deploy');
+
 // Roles
 Route::prefix('/roles')->group(function () {
     Route::get('/', [Admin\RoleController::class, 'index'])
