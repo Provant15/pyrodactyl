@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Pterodactyl\Http\Controllers\Auth;
 
@@ -17,6 +18,15 @@ use Pterodactyl\Http\Controllers\Auth;
 Route::get('/login', [Auth\LoginController::class, 'index'])->name('auth.login');
 Route::get('/password', [Auth\LoginController::class, 'index'])->name('auth.forgot-password');
 Route::get('/password/reset/{token}', [Auth\LoginController::class, 'index'])->name('auth.reset');
+
+// Store an external redirect URL in the session for post-login redirection.
+Route::post('/store-redirect', function (Request $request) {
+    $redirect = $request->input('redirect_url', '');
+    if ($redirect && filter_var($redirect, FILTER_VALIDATE_URL)) {
+        session()->put('external_redirect', $redirect);
+    }
+    return response()->noContent();
+})->middleware('web');
 
 // Apply a throttle to authentication action endpoints to slow down manual attack spammers. 🤷‍
 //

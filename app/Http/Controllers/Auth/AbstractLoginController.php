@@ -82,10 +82,35 @@ abstract class AbstractLoginController extends Controller
         return new JsonResponse([
             'data' => [
                 'complete' => true,
-                'intended' => $this->redirectPath(),
+                'intended' => $this->getIntendedRedirect(),
                 'user' => $user->toVueObject(),
             ],
         ]);
+    }
+
+    /**
+     * Check session for an external redirect URL and validate it against allowed domains.
+     * Falls back to the standard redirect path if no valid external redirect is found.
+     */
+    protected function getIntendedRedirect(): string
+    {
+        $externalRedirect = session()->pull('external_redirect');
+
+        if ($externalRedirect) {
+            $parsed = parse_url($externalRedirect);
+            $allowedDomains = explode(',', config('app.allowed_redirect_domains', ''));
+
+            if ($parsed && isset($parsed['host'])) {
+                foreach ($allowedDomains as $domain) {
+                    $domain = trim($domain);
+                    if ($domain && str_ends_with($parsed['host'], $domain)) {
+                        return $externalRedirect;
+                    }
+                }
+            }
+        }
+
+        return $this->redirectPath();
     }
 
     /**

@@ -14,6 +14,7 @@ import Logo from '@/components/elements/PyroLogo';
 import CaptchaManager from '@/lib/captcha';
 
 import login from '@/api/auth/login';
+import http from '@/api/http';
 
 import useFlash from '@/plugins/useFlash';
 
@@ -28,6 +29,14 @@ function LoginContainer() {
 
     useEffect(() => {
         clearFlashes();
+    }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const redirect = params.get('redirect');
+        if (redirect) {
+            http.post('/auth/store-redirect', { redirect_url: redirect }).catch(() => {});
+        }
     }, []);
 
     const onSubmit = (values: Values, { setSubmitting }: FormikHelpers<Values>) => {

@@ -223,6 +223,19 @@ return [
   |
   */
 
+  /*
+  |--------------------------------------------------------------------------
+  | Allowed Redirect Domains
+  |--------------------------------------------------------------------------
+  |
+  | Comma-separated list of domain suffixes that are allowed as external
+  | redirect targets after login. Used by the SPA login flow to redirect
+  | back to external admin panels hosted on trusted domains.
+  |
+  */
+
+  'allowed_redirect_domains' => env('APP_ALLOWED_REDIRECT_DOMAINS', '.owp.au'),
+
   'aliases' => Facade::defaultAliases()->merge([
     'Alert' => Prologue\Alerts\Facades\Alert::class,
     'Carbon' => Carbon\Carbon::class,
