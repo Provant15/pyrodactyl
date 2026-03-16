@@ -18,12 +18,13 @@ return new class extends Migration {
         });
 
         // Make allocation_id nullable so archived servers can release their allocation.
-        // MariaDB allows multiple NULLs in a unique index by default, so a regular
-        // unique constraint works here (unlike PostgreSQL which needs a partial index).
+        // MariaDB requires dropping the FK before the unique index, then re-adding both.
         Schema::table('servers', function (Blueprint $table) {
-            $table->unsignedInteger('allocation_id')->nullable()->change();
+            $table->dropForeign(['allocation_id']);
             $table->dropUnique(['allocation_id']);
+            $table->unsignedInteger('allocation_id')->nullable()->change();
             $table->unique('allocation_id');
+            $table->foreign('allocation_id')->references('id')->on('allocations');
         });
     }
 
