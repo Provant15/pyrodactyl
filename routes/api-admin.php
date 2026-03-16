@@ -76,6 +76,16 @@ Route::prefix('/slots')->group(function () {
 Route::post('/plans/{plan}/propagate', [Admin\PlanController::class, 'propagate'])
     ->middleware('admin.permission:admin:plans.manage');
 
+// Lookup endpoints (for form selectors)
+Route::prefix('/lookup')->group(function () {
+    Route::get('/users', [Admin\LookupController::class, 'users'])
+        ->middleware('admin.permission:admin:slots.create');
+    Route::get('/nodes', [Admin\LookupController::class, 'nodes'])
+        ->middleware('admin.permission:admin:slots.create');
+    Route::get('/nodes/{node}/allocations', [Admin\LookupController::class, 'allocations'])
+        ->middleware('admin.permission:admin:slots.create');
+});
+
 // Permissions metadata (for role editor UI)
 Route::get('/permissions', [Admin\RoleController::class, 'permissions'])
     ->middleware('admin.permission:admin:roles.view');
