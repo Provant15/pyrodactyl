@@ -13,6 +13,9 @@ use Pterodactyl\Http\Controllers\Api\Admin;
 |
 */
 
+// Current user
+Route::get('/me', Admin\MeController::class);
+
 // Roles
 Route::prefix('/roles')->group(function () {
     Route::get('/', [Admin\RoleController::class, 'index'])
