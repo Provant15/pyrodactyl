@@ -68,6 +68,8 @@ Route::prefix('/slots')->group(function () {
         ->middleware('admin.permission:admin:slots.archive');
     Route::post('/{slot}/restore', [Admin\SlotController::class, 'restore'])
         ->middleware('admin.permission:admin:slots.restore');
+    Route::delete('/{slot}/archives/{server}', [Admin\SlotController::class, 'deleteArchive'])
+        ->middleware('admin.permission:admin:slots.delete');
 });
 
 // Plan propagation

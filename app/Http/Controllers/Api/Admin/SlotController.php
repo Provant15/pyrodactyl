@@ -6,12 +6,14 @@ use Pterodactyl\Http\Resources\Admin\SlotResource;
 use Pterodactyl\Models\Egg;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\ServerSlot;
+use Pterodactyl\Services\Elytra\ElytraJobService;
 use Pterodactyl\Services\Servers\ServerArchiveService;
 use Pterodactyl\Services\Servers\ServerDeployService;
 use Pterodactyl\Services\Servers\ServerRestoreService;
 use Pterodactyl\Services\Servers\ServerSwapService;
 use Pterodactyl\Services\Slots\SlotCreationService;
 use Pterodactyl\Services\Slots\SlotDeletionService;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -31,6 +33,7 @@ class SlotController extends AdminApiController
         private ServerArchiveService $archiveService,
         private ServerRestoreService $restoreService,
         private ServerSwapService $swapService,
+        private ElytraJobService $elytraJobService,
     ) {}
 
     /**
@@ -175,5 +178,36 @@ class SlotController extends AdminApiController
         return new JsonResponse([
             'message' => 'Restore initiated. Reinstalling game binaries (Phase 1).',
         ], JsonResponse::HTTP_ACCEPTED);
+    }
+
+    /**
+     * Delete an individual archived server and its Rustic snapshot.
+     */
+    public function deleteArchive(Request $request, ServerSlot $slot, Server $server): JsonResponse
+    {
+        if ($server->slot_id !== $slot->id || $server->status !== Server::STATUS_ARCHIVED) {
+            throw new NotFoundHttpException('Archived server not found on this slot.');
+        }
+
+        if ($server->archive_snapshot_id) {
+            try {
+                $this->elytraJobService->submitJob(
+                    $server,
+                    'archive_delete',
+                    ['snapshot_id' => $server->archive_snapshot_id, 'operation' => 'archive_delete'],
+                    $request->user(),
+                );
+            } catch (\Throwable $e) {
+                logger()->warning('Failed to submit snapshot cleanup for archive deletion', [
+                    'slot_id' => $slot->id,
+                    'server_id' => $server->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $server->delete();
+
+        return $this->returnNoContent();
     }
 }
