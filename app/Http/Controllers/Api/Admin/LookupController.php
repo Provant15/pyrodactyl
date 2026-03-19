@@ -55,17 +55,28 @@ class LookupController extends AdminApiController
     }
 
     /**
-     * List available allocations for a node (unassigned only).
+     * Get the next available port on a node and a summary of port usage.
+     * The frontend pre-fills this port but lets the admin override it.
      */
-    public function allocations(Node $node): JsonResponse
+    public function nextPort(Node $node): JsonResponse
     {
-        $allocations = Allocation::where('node_id', $node->id)
+        $nextAvailable = Allocation::where('node_id', $node->id)
             ->whereNull('server_id')
-            ->select(['id', 'ip', 'port', 'ip_alias', 'notes'])
-            ->orderBy('ip')
             ->orderBy('port')
-            ->get();
+            ->value('port');
 
-        return new JsonResponse(['data' => $allocations]);
+        $usedCount = Allocation::where('node_id', $node->id)
+            ->whereNotNull('server_id')
+            ->count();
+
+        $totalCount = Allocation::where('node_id', $node->id)->count();
+
+        return new JsonResponse([
+            'data' => [
+                'next_port' => $nextAvailable,
+                'used_ports' => $usedCount,
+                'total_ports' => $totalCount,
+            ],
+        ]);
     }
 }

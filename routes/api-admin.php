@@ -82,7 +82,7 @@ Route::prefix('/lookup')->group(function () {
         ->middleware('admin.permission:admin:slots.create');
     Route::get('/nodes', [Admin\LookupController::class, 'nodes'])
         ->middleware('admin.permission:admin:slots.create');
-    Route::get('/nodes/{node}/allocations', [Admin\LookupController::class, 'allocations'])
+    Route::get('/nodes/{node}/next-port', [Admin\LookupController::class, 'nextPort'])
         ->middleware('admin.permission:admin:slots.create');
 });
 
